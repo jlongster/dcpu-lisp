@@ -1,0 +1,42 @@
+Sublisp is a simple language that compiles to optimized DCPU-16
+assembly code. It is a very restricted subset of Lisp. There is no GC,
+and thus no data structures or run-time closures.
+
+Think of it as a light wrapper around the assembly code, providing
+named variables, lexically-bound closures, and a little bit of helpful
+magic here and there.
+
+Create a function like so:
+
+    (define (foo x)
+      (+ x 1))
+
+Variable references are statically referenced and compiled out
+straight to registers. In one function, you are not allowed more
+variable definitions than there are registers (8).
+
+Nested functions are allowed:
+
+    (define (foo x)
+      (define (bar y)
+        (+ x y))
+      (bar 10))
+
+Run-time closures are not available because of the lack of GC, so the
+closed function cannot out-live its parent (you couldn't return `bar`).
+
+A function application is executed by pushing all the currently used
+registers on the stack and using the JSR instruction to call the
+function. The return value sits on top of the stack, so it is popped
+off and along with all the current registers.
+
+Only 2 kinds of values exist: functions and numbers.
+
+There is a lot more we could do to enrich the language but still keep
+provable semantics statically.
+
+It is written in Outlet, a Lisp that compiled to Javascript, so the
+compiler could be run in browser. See
+https://github.com/jlongster/outlet. The js is packaged with the
+project so you can run it with Node.
+
