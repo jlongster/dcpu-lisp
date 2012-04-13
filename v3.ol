@@ -433,7 +433,8 @@
                     r)
                   #f))))
     `(,(function-name walked)
-      ,@(linearize (function-body walked)))))
+      ,@(linearize (function-body walked))
+      (SET PC POP))))
 
 (define (linearize-assignment exp)
   (let ((var (set-name exp))
@@ -540,6 +541,22 @@
              '()
              exp))))))
 
+(define (output exp)
+  (for-each (lambda (e)
+              (cond
+               ((list? e)
+                (let ((ln (length e)))
+                  (cond
+                   ((== ln 2) (println (str (car e) " " (cadr e))))
+                   ((== ln 3) (println (str (car e) " "
+                                            (cadr e) ", "
+                                            (caddr e))))
+                   (else (throw (str "invalid expression: " e))))))
+               ((symbol? e) (println (str ":" e)))
+               (else
+                (throw (str "invalid expression: " e)))))
+            exp))
+
 ;; strip the env objects out of our structure so that we can inspect
 ;; it easier (envs contain tons of circular references). only works on
 ;; non-linearized forms
@@ -558,8 +575,10 @@
 (define (pp-w/o-envs exp)
   (pp (strip-envs exp)))
 
-(define-prim (/ x y))
 (define-prim (+ x y))
+(define-prim (- x y))
+(define-prim (/ x y))
+(define-prim (* x y))
 
 (define-macro (assert v1 v2)
   `(let ((res1 ,v1)
@@ -577,13 +596,18 @@
 ;; (assert (compile* '(define (a) 3) r-init) '(FUNCTION a ((RETURN 3))))
 
 (r-init-initialize!)
-(pp
+(output
  (linearize
   (compile '(begin
               (define (__main)
+                (define (__exit) (__exit))
                 (define (foo x y)
-                  (+ x y))
-                (define (__exit) 0)
-                (define a (foo 1 2))
-                (+ a (foo 1 2))
+                  (define (bar z)
+                    (+ x z))
+                  (bar 5))
+                (foo 2 0)
                 (__exit))))))
+
+;; todo: need to fix up calling procedures as argments to functions.
+;; the linearize-application needs to save the other arguments, right
+;; now it overwrites them
