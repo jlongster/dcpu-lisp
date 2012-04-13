@@ -1,21 +1,10 @@
-(define (walk exp f)
-  (cond
-   ((symbol? exp) (or (f exp) exp))
-   ((list? exp) (map (lambda (e)
-                       (let ((ne (f e)))
-                         (if ne ne (walk e f))))
-                     exp))
-   (else exp)))
+(define (list-pop lst v)
+  (reverse
+   (fold (lambda (el acc)
+           (if (== v el)
+               acc
+               (cons el acc)))
+         '()
+         lst)))
 
-(pp (walk '(foo
-            #t
-            (bar
-             (bar waht yes)
-             (though you would)
-             (thinkg that
-                     (it might)))
-            (not work so
-                 (though it might))) (lambda (e)
-                                       (if (== (car e) 'thoughkk)
-                                           3
-                                           #f))))
+(pp (list-pop '(1 2 3 4) 'sdfd))
