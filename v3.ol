@@ -108,7 +108,11 @@
         (throw (str "can't redefine variable: " name)))
     (dict-put! vf* name 'not-created)))
 
+
 (define (lookup-variable env var)
+  (%lookup-variable env (strip-deref var)))
+
+(define (%lookup-variable env var)
   (if (list? env)
       (let ((frame (car env))
             (v (dict-ref (frame-vars frame) var)))
@@ -116,6 +120,9 @@
       #f))
 
 (define (lookup-variable-reg env var)
+  (%lookup-variable-reg env (strip-deref var)))
+
+(define (%lookup-variable-reg env var)
   (if (list? env)
       (let ((frame (car env))
             (v (dict-ref (frame-vars frame) var)))
@@ -190,13 +197,25 @@
           (dict-put! vf* name def))
         (throw "can't set function environment of non-local functio"))))
 
+;; deref
+
+(define (strip-deref var)
+  (let ((s (symbol->string var)))
+    (if (== (vector-ref s 0) "*")
+        (string->symbol (s.slice 1))
+        var)))
+
+(define (dereference? var)
+  (== (vector-ref (symbol->string var) 0) "*"))
+
 ;; J is used to hold the return value
 (define all-regs '(A B C X Y Z I))
 (define r-init-template (list (make-frame '())))
 
-(define-macro (define-prim func)
+(define-macro (define-prim func . native?)
   (let ((name (car func))
-        (args (cdr func)))
+        (args (cdr func))
+        (native? (if (null? native?) #f (car native?))))
     `(let ((env (extend-environment r-init-template
                                     ',args)))
        (add-func-to-frame (top-frame r-init-template) ',name)
@@ -208,7 +227,11 @@
         (make-function-def ',name
                            ',args
                            env
-                           '())))))
+                           '()
+                           ,native?)))))
+
+(define-macro (define-native func)
+  `(define-prim ,func #t))
 
 (define (r-init-make)
   ;; Copy r-init-template and make a fresh environment
@@ -238,8 +261,9 @@
   (and (list? e)
        (== (car e) 'CALL)))
 
-(define (make-function-def name args env body)
-  `(FUNCTION ,name ,args ,env ,body))
+(define (make-function-def name args env body . native?)
+  (let ((native? (if (null? native?) #f (car native?))))
+    `(FUNCTION ,name ,args ,env ,body ,native?)))
 
 (define (function-def? e)
   (and (list? e)
@@ -251,6 +275,8 @@
   (car (cdddr f)))
 (define (function-body f)
   (cadr (cdddr f)))
+(define (function-native? f)
+  (caddr (cdddr f)))
 
 (define (make-application env name args)
   `(CALL ,env ,name ,args))
@@ -291,10 +317,11 @@
 
 (define (compile-variable v env)
   (let ((var (lookup-variable env v)))
-    (if var `(VARIABLE-REF ,var)
+    (if var `(VARIABLE-REF ,v)
         (let ((f (lookup-function env v)))
           (if f `(FUNCTION-REF ,f)
-              (throw (str "undefined variable: " v)))))))
+              (throw (str "undefined variable: " v))))
+        (throw (str "undefined variable: ") v))))
 
 (define (compile-quoted exp)
   `(CONST ,exp))
@@ -336,9 +363,6 @@
       '()))
 
 (define (compile-application v a* env)
-  ;; push all the registers in the top frame
-  ;; extend the environment with new frame with args
-  ;; v should be a variable in the environment
   (let ((frame (top-frame env))
         (vars (frame-vars frame)))
     (if (not (or (register? v)
@@ -420,20 +444,24 @@
 (define (linearize-return exp)
   (linearize (cadr exp) 'J))
 
+(define (replace-variable-refs exp env)
+  (walk exp
+        (lambda (e)
+          (if (== (car e) 'VARIABLE-REF)
+              (let ((v (cadr e))
+                    (r (lookup-variable-reg env v)))
+                (if (not r)
+                    (throw "error, register not assigned"))
+                (if (dereference? v)
+                    (string->symbol (str "[" r "]"))
+                    r))
+              #f))))
+
 (define (linearize-function exp)
   ;; Scan the body for variable references and allocate registers
   (let ((env (function-env exp)))
-    (define walked
-      (walk exp
-            (lambda (e)
-              (if (== (car e) 'VARIABLE-REF)
-                  (let ((r (lookup-variable-reg env (cadr e))))
-                    (if (not r)
-                        (throw "error, register not assigned"))
-                    r)
-                  #f))))
-    `(,(function-name walked)
-      ,@(linearize (function-body walked))
+    `(,(function-name exp)
+      ,@(linearize (function-body (replace-variable-refs exp env)))
       (SET PC POP))))
 
 (define (linearize-assignment exp)
@@ -446,6 +474,71 @@
   (if target
       `((SET ,target ,(const-value exp)))
       '()))
+
+(define (linearize-arg exp reg used-regs)
+  ;; if it's an application, we need to save the regsiters from all
+  ;; previous argument values because all crazy things might happen in
+  ;; the calling function
+  (if (application? exp)
+      (list-append
+       (map (lambda (r)
+              `(SET PUSH ,r))
+            used-regs)
+       (linearize exp reg)
+       (map (lambda (r)
+              `(SET ,r POP))
+            (reverse used-regs)))
+      (linearize exp reg)))
+
+(define (linearize-arguments arg-values arg-regs)  
+  (let loop ((a* (keys arg-values))
+             (used-regs '())
+             (acc '()))
+    (if (null? a*)
+        acc
+        (let ((var (car a*))
+              (reg (dict-ref arg-regs var))
+              (exp (dict-ref arg-values var)))
+          (if (not reg)
+              (throw (str "while linearizing application, "
+                          "undefined variable: " var)))
+          (loop (cdr a*)
+                (cons reg used-regs)
+                (if (== reg 'not-allocated)
+                    acc
+                    (list-append
+                     acc
+                     (linearize-arg exp reg used-regs))))))))
+
+(define (optimized-native-application? exp)
+  (let ((env (application-env exp))
+        (def (lookup-function-def env (application-name exp))))
+    (and
+     (function-native? def)
+     (fold (lambda (arg acc)
+             (and acc (or (const? arg)
+                          (symbol? arg))))
+           #t
+           (application-args exp)))))
+
+(define (linearize-native-application exp)
+  (let ((env (application-env exp))
+        (def (lookup-function-def env (application-name exp)))
+        (fenv (function-env def))
+        (arg-regs (frame-vars (top-frame fenv)))
+        (args (application-args exp)))
+    (if (not (symbol? (car args)))
+        (throw (str "error: native function requires register "
+                    "as first argument: " (application-name exp))))
+    (list
+     `(,(application-name exp)
+       ,@(map (lambda (a)
+                (cond
+                 ((const? a) (const-value a))
+                 ((symbol? a) a)
+                 (else
+                  (throw (str "error: can't apply to native function: " a)))))
+              (application-args exp))))))
 
 (define (linearize-application exp target)
   (let ((env (application-env exp))
@@ -478,21 +571,15 @@
                  acc))
            '()
            regs)
-     (fold (lambda (var acc)
-             (let ((reg (dict-ref arg-regs var)))
-               (if (not reg)
-                   (throw (str "while linearizing application, "
-                               "undefined variable: " var)))
-               (if (not (== reg 'not-allocated))
-                   (list-append acc
-                                (linearize (dict-ref args var) reg))
-                   acc)))
-           '()
-           (keys args))
-     `((JSR ,(application-name exp)))
-     (if (and target (not (== target 'J)))
-         `((SET ,target J))
-         '())
+     (linearize-arguments args arg-regs)
+     (if (function-native? def)
+         `((,(application-name exp) ,@(map (lambda (a)
+                                             (dict-ref arg-regs a))
+                                           (function-args def))))
+         (cons `(JSR ,(application-name exp))
+               (if (and target (not (== target 'J)))
+                   (list `(SET ,target J))
+                   '())))
      (fold (lambda (r acc)
              (if (not (== r target))
                  (cons `(SET ,r POP)
@@ -507,7 +594,9 @@
         (case (car exp)
           ((FUNCTION) (linearize-function exp))
           ((RETURN) (linearize-return exp))
-          ((CALL) (linearize-application exp target))
+          ((CALL) (if (optimized-native-application? exp)
+                      (linearize-native-application exp)
+                      (linearize-application exp target)))
           ((SET) (linearize-assignment exp))
           ((CONST) (linearize-constant exp target))
           (else
@@ -541,21 +630,39 @@
              '()
              exp))))))
 
-(define (output exp)
+(define (output . e*)
+  ;; wow, this is bad code
+  (define (str* . vals)
+    (apply
+     str
+     (map (lambda (v)
+            (cond
+             ((number? v)
+              (str "0x" (v.toString 16)))
+             ((vector? v)
+              (str "[" (apply str* (vector->list v)) "]"))
+             ((symbol? v)
+              (let ((s (symbol->string v)))
+                (if (== (vector-ref s 0) "*")
+                    (str "[" (s.slice 1) "]")
+                    s)))
+             (else v)))
+          vals)))
+  
   (for-each (lambda (e)
               (cond
                ((list? e)
                 (let ((ln (length e)))
                   (cond
-                   ((== ln 2) (println (str (car e) " " (cadr e))))
-                   ((== ln 3) (println (str (car e) " "
-                                            (cadr e) ", "
-                                            (caddr e))))
+                   ((== ln 2) (println (str* (car e) " " (cadr e))))
+                   ((== ln 3) (println (str* (car e) " "
+                                             (cadr e) ", "
+                                             (caddr e))))
                    (else (throw (str "invalid expression: " e))))))
                ((symbol? e) (println (str ":" e)))
                (else
                 (throw (str "invalid expression: " e)))))
-            exp))
+            (apply list-append e*)))
 
 ;; strip the env objects out of our structure so that we can inspect
 ;; it easier (envs contain tons of circular references). only works on
@@ -579,35 +686,32 @@
 (define-prim (- x y))
 (define-prim (/ x y))
 (define-prim (* x y))
+(define-prim (print pos text))
+(define-prim (deref x))
 
-(define-macro (assert v1 v2)
-  `(let ((res1 ,v1)
-         (res2 ,v2))
-     (if (not (= res1 res2))
-         (throw (str "assert failed: "
-                     ',v1 " got " res1
-                     " but expected " res2)))))
+(define-native (ADD x y))
+(define-native (SET x y))
+(define-native (BOR x y))
 
-;; (r-init-initialize!)
-;; (assert (compile* 3 r-init) 3)
-;; (r-init-initialize!)
-;; (assert (compile* '(define OO 3) r-init) '(SET OO 3))
-;; (r-init-initialize!)
-;; (assert (compile* '(define (a) 3) r-init) '(FUNCTION a ((RETURN 3))))
+(define std-lib '())
 
-(r-init-initialize!)
 (output
+ '((JSR __main))
+ std-lib
  (linearize
   (compile '(begin
               (define (__main)
-                (define (__exit) (__exit))
-                (define (foo x y)
-                  (define (bar z)
-                    (+ x z))
-                  (bar 5))
-                (foo 2 0)
-                (__exit))))))
-
-;; todo: need to fix up calling procedures as argments to functions.
-;; the linearize-application needs to save the other arguments, right
-;; now it overwrites them
+                (define color 0)
+                (define bg-color 3840)
+                
+                (define (print pos text)
+                  (ADD pos 0x8000)
+                  (BOR text color)
+                  (BOR text bg-color)
+                  (SET *pos text))
+                
+                (print 0 0x35)
+                (print 1 0x20)
+                (print 2 0x36)
+                (print 3 0x20)
+                (print 4 0x37))))))
