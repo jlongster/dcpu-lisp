@@ -60,6 +60,63 @@
                      exp))
    (else exp)))
 
+;; macros
+
+(define (expand exp)
+  (cond
+   ((or (atom? exp)
+        (vector? exp)
+        (dict? exp)) exp)
+   ((macro? (car exp))
+    (expand ((macro-function (car exp)) exp)))
+   ((eq? (car exp) 'quote) exp)
+   ((eq? (car exp) 'lambda)
+    `(lambda ,(cadr exp)
+       ,@(map expand (cddr exp))))
+   ((eq? (car exp) 'define)
+    `(define ,(cadr exp)
+       ,@(map expand (cddr exp))))
+   (else (map expand exp))))
+
+(define %macros {})
+
+(define (macro-function name)
+  (dict-ref %macros name))
+
+(define (install-macro name f)
+  (dict-put! %macros name f))
+
+(define (macro? name)
+  (and (dict-ref %macros name) #t))
+
+(install-macro 'define-macro
+               (lambda (form e)
+                 (let ((sig (cadr form)))
+                   (let ((name (car sig))
+                         (pattern (cdr sig))
+                         (body (cddr form)))
+                     ;; install it during expand-time
+                     (install-macro name (make-macro pattern body))
+                     #t))))
+
+(define (make-macro pattern body)
+  (let ((x (gensym))
+        (e (gensym)))
+    (eval
+     `(lambda (,x)
+        (let ,(destructure pattern `(cdr ,x) '())
+          ,@body)))))
+
+(define (destructure pattern access bindings)
+  (cond
+   ((null? pattern) bindings)
+   ((eq? (car pattern) '.) (cons (list (cadr pattern) access)
+                                bindings))
+   (else
+    (cons (list (car pattern) `(car ,access))
+          (destructure (cdr pattern) `(cdr ,access)
+                       bindings)))))
+
 ;; environments and frames
 
 (define (extend-environment env vars)
@@ -108,11 +165,7 @@
         (throw (str "can't redefine variable: " name)))
     (dict-put! vf* name 'not-created)))
 
-
 (define (lookup-variable env var)
-  (%lookup-variable env (strip-deref var)))
-
-(define (%lookup-variable env var)
   (if (list? env)
       (let ((frame (car env))
             (v (dict-ref (frame-vars frame) var)))
@@ -120,9 +173,6 @@
       #f))
 
 (define (lookup-variable-reg env var)
-  (%lookup-variable-reg env (strip-deref var)))
-
-(define (%lookup-variable-reg env var)
   (if (list? env)
       (let ((frame (car env))
             (v (dict-ref (frame-vars frame) var)))
@@ -200,13 +250,11 @@
 ;; deref
 
 (define (strip-deref var)
-  (let ((s (symbol->string var)))
-    (if (== (vector-ref s 0) "*")
-        (string->symbol (s.slice 1))
-        var)))
+  (if (vector? var)
+      (vector-ref var 0)
+      var))
 
-(define (dereference? var)
-  (== (vector-ref (symbol->string var) 0) "*"))
+(define dereference? vector?)
 
 ;; J is used to hold the return value
 (define all-regs '(A B C X Y Z I))
@@ -247,7 +295,7 @@
 (define (r-init-initialize!)
   (set! r-init (r-init-make)))
 
-;; compiler
+;; intermediate representation
 
 (define register? symbol?)
 (define label? symbol?)
@@ -315,6 +363,17 @@
 
 (define const-value cadr)
 
+(define (make-deref v)
+  `(DEREF ,v))
+
+(define (deref? v)
+  (and (list? v)
+       (== (car v) 'DEREF)))
+
+(define deref-value cadr)
+
+;; compiler
+
 (define (compile-variable v env)
   (let ((var (lookup-variable env v)))
     (if var `(VARIABLE-REF ,v)
@@ -323,8 +382,14 @@
               (throw (str "undefined variable: " v))))
         (throw (str "undefined variable: ") v))))
 
+(define (compile-deref exp env)
+  (let ((v (vector-ref exp 0)))
+    (if (not (or (number? v) (symbol? v)))
+        (throw (str "can't deref expression: " v)))
+    (make-deref (compile* v env))))
+
 (define (compile-quoted exp)
-  `(CONST ,exp))
+  (make-const exp))
 
 (define (compile-definition e e* env)
   (cond
@@ -372,29 +437,28 @@
                  (lookup-function env v)))
           (args (map
                  (lambda (a)
-                   (cond
-                    ((symbol? a) (compile-variable a env))
-                    ((atom? a) (compile-quoted a))
-                    ((list? a) (compile-application (car a)
-                                                    (cdr a)
-                                                    env))
-                    (else (throw (str "bad function value: " a)))))
+                   (if (and (list? a)
+                            (== (car a) 'set!))
+                       (throw (str "bad function value: " a)))
+                   (compile* a env))
                  a*)))
       (if (not f)
           (throw (str "undefined variable: " v)))
       (make-application env f args))))
 
 (define (compile* exp cenv)
-  (if (atom? exp)
-      (if (symbol? exp)
-          (compile-variable exp cenv)
-          (compile-quoted exp))
-      (case (car exp)
-        ((define) (compile-definition (cadr exp) (cddr exp) cenv))
-        ((set!) (compile-assignment (cadr exp) (caddr exp) cenv))
-        ((if) (compile-conditional exp cenv))
-        ((begin) (compile-sequence (cdr exp) cenv))
-        (else (compile-application (car exp) (cdr exp) cenv)))))
+  (cond
+   ((atom? exp) (if (symbol? exp)
+                    (compile-variable exp cenv)
+                    (compile-quoted exp)))
+   ((dereference? exp) (compile-deref exp cenv))
+   (else
+    (case (car exp)
+      ((define) (compile-definition (cadr exp) (cddr exp) cenv))
+      ((set!) (compile-assignment (cadr exp) (caddr exp) cenv))
+      ((if) (compile-conditional exp cenv))
+      ((begin) (compile-sequence (cdr exp) cenv))
+      (else (compile-application (car exp) (cdr exp) cenv))))))
 
 ;; hoist all functions within f
 (define (hoist f)
@@ -441,6 +505,20 @@
    funcs)
   funcs)
 
+(define (linearize-deref exp target)
+  (let ((x (deref-value exp))
+        (v (if (const? x)
+               (const-value x)
+               x)))
+    (if target
+        `((SET ,target [,v]))
+        [v])))
+
+(define (linearize-reference exp target)
+  (if target
+      `((SET ,target ,exp))
+      '()))
+
 (define (linearize-return exp)
   (linearize (cadr exp) 'J))
 
@@ -452,9 +530,7 @@
                     (r (lookup-variable-reg env v)))
                 (if (not r)
                     (throw "error, register not assigned"))
-                (if (dereference? v)
-                    (string->symbol (str "[" r "]"))
-                    r))
+                r)
               #f))))
 
 (define (linearize-function exp)
@@ -517,7 +593,8 @@
      (function-native? def)
      (fold (lambda (arg acc)
              (and acc (or (const? arg)
-                          (symbol? arg))))
+                          (symbol? arg)
+                          (deref? arg))))
            #t
            (application-args exp)))))
 
@@ -527,15 +604,13 @@
         (fenv (function-env def))
         (arg-regs (frame-vars (top-frame fenv)))
         (args (application-args exp)))
-    (if (not (symbol? (car args)))
-        (throw (str "error: native function requires register "
-                    "as first argument: " (application-name exp))))
     (list
      `(,(application-name exp)
        ,@(map (lambda (a)
                 (cond
                  ((const? a) (const-value a))
                  ((symbol? a) a)
+                 ((deref? a) (linearize-deref a))
                  (else
                   (throw (str "error: can't apply to native function: " a)))))
               (application-args exp))))))
@@ -599,6 +674,7 @@
                       (linearize-application exp target)))
           ((SET) (linearize-assignment exp))
           ((CONST) (linearize-constant exp target))
+          ((DEREF) (linearize-deref exp target))
           (else
            (let loop ((lst exp)
                       (acc '()))
@@ -611,15 +687,15 @@
                            (list-append acc
                                         (linearize (car lst)))))))))
         (if target
-            (linearize-constant `(CONST ,exp) target)
-            (list exp)))))
+            (linearize-reference exp target)
+            (throw (str "cannot linearize expression: " exp))))))
 
 (define (compile exp)
   (r-init-initialize!)
 
   (let ((exp (compile* exp r-init)))
     (cond
-     ((atom? exp) (linearize exp))
+     ((atom? exp) exp)
      ((function-def? exp) (allocate (hoist exp)))
      (else
       (reverse
@@ -641,11 +717,6 @@
               (str "0x" (v.toString 16)))
              ((vector? v)
               (str "[" (apply str* (vector->list v)) "]"))
-             ((symbol? v)
-              (let ((s (symbol->string v)))
-                (if (== (vector-ref s 0) "*")
-                    (str "[" (s.slice 1) "]")
-                    s)))
              (else v)))
           vals)))
   
@@ -699,19 +770,32 @@
  '((JSR __main))
  std-lib
  (linearize
-  (compile '(begin
-              (define (__main)
-                (define color 0)
-                (define bg-color 3840)
-                
-                (define (print pos text)
-                  (ADD pos 0x8000)
-                  (BOR text color)
-                  (BOR text bg-color)
-                  (SET *pos text))
-                
-                (print 0 0x35)
-                (print 1 0x20)
-                (print 2 0x36)
-                (print 3 0x20)
-                (print 4 0x37))))))
+  (compile
+   (expand
+    '(begin
+       (define (__main)
+         (define color 0xf000)
+         (define bg-color 0)
+
+         (define-macro (print pos text)
+           (let ((color 0xf000)
+                 (bg-color 0))
+             (if (and (number? pos)
+                      (number? text))
+                 `(SET [,(+ 0x8000 pos)]
+                       ,(bitwise-or
+                         text
+                         (bitwise-or color bg-color)))
+                 `(print* ,pos ,text))))
+         
+         (define (print* pos text)
+           (ADD pos 0x8000)
+           (BOR text color)
+           (BOR text bg-color)
+           (SET [pos] text))
+         
+         (print 0 0x35)
+         (print 1 0x20)
+         (print 2 0x36)
+         (print 3 0x20)
+         (print 4 0x37)))))))
