@@ -1,5 +1,7 @@
 ;; This is written in Outlet: https://github.com/jlongster/outlet
 
+(require (fs "fs"))
+
 ;; util
 
 (define-macro (case c . variants)
@@ -97,15 +99,14 @@
                          (body (cddr form)))
                      ;; install it during expand-time
                      (install-macro name (make-macro pattern body))
-                     #t))))
+                     0))))
 
 (define (make-macro pattern body)
   (let ((x (gensym))
         (e (gensym)))
-    (eval
-     `(lambda (,x)
-        (let ,(destructure pattern `(cdr ,x) '())
-          ,@body)))))
+    (eval `(lambda (,x)
+             (let ,(destructure pattern `(cdr ,x) '())
+               ,@body)))))
 
 (define (destructure pattern access bindings)
   (cond
@@ -119,17 +120,25 @@
 
 ;; environments and frames
 
-(define (extend-environment env vars)
-  (cons (make-frame vars) env))
+(define (environment? obj)
+  (and (list? obj)
+       (and (vector? (car obj))
+            (== (vector-length (car obj)) 3)
+            (symbol? (vector-ref (car obj) 2)))))
+
+(define (extend-environment env vars enclosing-func)
+  (cons (make-frame vars enclosing-func) env))
 
 (define (empty-dict vals def)
   (zip vals (map (lambda (v) def) vals)))
 
-;; a frame is a two-element vector, a dict representing variables and
-;; associated registers and a dict of function names and objects
-(define (make-frame vars)
+;; a frame is a three-element vector, a dict representing variables and
+;; associated registers, a dict of function names and objects, and the
+;; name of the enclosing function
+(define (make-frame vars enclosing-func)
   [(empty-dict vars 'not-allocated)
-   (empty-dict '() 'not-created)])
+   (empty-dict '() 'not-created)
+   enclosing-func])
 
 (define (frame-vars frame)
   (vector-ref frame 0))
@@ -142,6 +151,12 @@
 
 (define (set-frame-funcs! frame funcs)
   (vector-put! frame 1 funcs))
+
+(define (frame-enclosing-function frame)
+  (vector-ref frame 2))
+
+(define (set-frame-enclosing-function frame name)
+  (vector-set! frame 2 name))
 
 (define top-frame car)
 
@@ -166,6 +181,11 @@
     (dict-put! vf* name 'not-created)))
 
 (define (lookup-variable env var)
+  (if (global-variable? var)
+      var
+      (%lookup-variable env var)))
+
+(define (%lookup-variable env var)
   (if (list? env)
       (let ((frame (car env))
             (v (dict-ref (frame-vars frame) var)))
@@ -173,6 +193,11 @@
       #f))
 
 (define (lookup-variable-reg env var)
+  (if (global-variable? var)
+      var
+      (%lookup-variable-reg env var)))
+
+(define (%lookup-variable-reg env var)
   (if (list? env)
       (let ((frame (car env))
             (v (dict-ref (frame-vars frame) var)))
@@ -211,8 +236,9 @@
         (%allocate-registers env unallocated free-regs)
         (let ((reg (lookup-variable-reg env (car vars))))
           (if (not reg)
-              (throw "can't allocate reg for non-existant variable: "
-                     v "\nwhat the heck man? why'd you give me that?"))
+              (throw (str "can't allocate reg for non-existant variable: "
+                          (car vars)
+                          "\nwhat the heck man? why'd you give me that?")))
           (if (== reg 'not-allocated)
               (loop (cdr vars)
                     (cons (car vars) unallocated)
@@ -235,6 +261,26 @@
         (if def def (lookup-function-def (cdr env) name)))
       #f))
 
+(define (namespaced-function-name env name)
+  (if (list? env)
+      (let ((frame (car env))
+            (def (dict-ref (frame-funcs frame) name)))
+        (if def
+            (string->symbol
+             (str (generate-global-name env)
+                  "-"
+                  name))
+            (namespaced-function-name (cdr env) name)))))
+
+(define (generate-global-name env)
+  (if (null? env)
+      #f
+      (if (null? (cdr env))
+          (frame-enclosing-function (car env))
+          (str (generate-global-name (cdr env))
+               "-"
+               (frame-enclosing-function (car env))))))
+
 (define (save-function-def! env name def)
   (let ((frame (car env))
         (vf* (frame-funcs frame))
@@ -256,16 +302,27 @@
 
 (define dereference? vector?)
 
+;; globals
+
+(define %globals '())
+
+(define (add-to-globals var)
+  (set! %globals (cons var %globals)))
+
+(define (global-variable? var)
+  (list-find %globals var))
+
 ;; J is used to hold the return value
 (define all-regs '(A B C X Y Z I))
-(define r-init-template (list (make-frame '())))
+(define r-init-template (list (make-frame '() 'global)))
 
 (define-macro (define-prim func . native?)
   (let ((name (car func))
         (args (cdr func))
         (native? (if (null? native?) #f (car native?))))
     `(let ((env (extend-environment r-init-template
-                                    ',args)))
+                                    ',args
+                                    ',name)))
        (add-func-to-frame (top-frame r-init-template) ',name)
        (allocate-registers env ',args)
        
@@ -281,10 +338,14 @@
 (define-macro (define-native func)
   `(define-prim ,func #t))
 
+(define-macro (define-global name)
+  `(add-to-globals ,name))
+
 (define (r-init-make)
   ;; Copy r-init-template and make a fresh environment
   (let ((frame-template (top-frame r-init-template))
-        (frame (make-frame (keys (frame-vars frame-template)))))
+        (frame (make-frame (keys (frame-vars frame-template))
+                           (frame-enclosing-function frame-template))))
     (set-frame-funcs! frame
                       (dict-map (lambda (x) x)
                                 (frame-funcs frame-template)))
@@ -325,6 +386,8 @@
   (cadr (cdddr f)))
 (define (function-native? f)
   (caddr (cdddr f)))
+(define (function-prefix f)
+  (car (cdddr (cdddr f))))
 
 (define (make-application env name args)
   `(CALL ,env ,name ,args))
@@ -337,6 +400,9 @@
 (define application-name caddr)
 (define (application-args e)
   (car (cdddr e)))
+
+(define (application-full-name env e)
+  (namespaced-function-name env (application-name e)))
 
 (define (make-set name env v)
   `(SET ,env ,name ,v))
@@ -363,6 +429,18 @@
 
 (define const-value cadr)
 
+(define (make-if cnd tru alt)
+  `(IF ,cnd ,tru ,alt))
+
+(define (if? exp)
+  (and (list? exp)
+       (== (car exp) 'IF)))
+
+(define if-cnd cadr)
+(define if-tru caddr)
+(define (if-alt exp)
+  (car (cdddr exp)))
+
 (define (make-deref v)
   `(DEREF ,v))
 
@@ -376,11 +454,12 @@
 
 (define (compile-variable v env)
   (let ((var (lookup-variable env v)))
-    (if var `(VARIABLE-REF ,v)
+    (if var
+        `(VARIABLE-REF ,v)
         (let ((f (lookup-function env v)))
-          (if f `(FUNCTION-REF ,f)
-              (throw (str "undefined variable: " v))))
-        (throw (str "undefined variable: ") v))))
+          (if f
+              `(FUNCTION-REF ,f)
+              (throw (str "undefined variable: " v)))))))
 
 (define (compile-deref exp env)
   (let ((v (vector-ref exp 0)))
@@ -396,7 +475,7 @@
    ((list? e)
     (let ((name (car e)))
       (add-func-to-frame (top-frame env) name)
-      (let ((fenv (extend-environment env (cdr e))))
+      (let ((fenv (extend-environment env (cdr e) name)))
         (let ((def (make-function-def
                     name
                     (cdr e)
@@ -416,15 +495,28 @@
         (throw (str "undefined variable: " var)))
     (make-set v env res)))
 
+(define (compile-conditional cnd exp alt env)
+  (make-if (compile* cnd env)
+           (compile* exp env)
+           (and alt (compile* alt env))))
+
 (define (compile-sequence e* env)
+  (define (begin? e)
+    (and (list? e) (== (car e) 'begin)))
+  
   (if (list? e*)
-      (if (list? (cdr e*))
-          (cons (compile* (car e*) env)
-                (compile-sequence (cdr e*) env))
-          (let ((e (compile* (car e*) env)))
-            (if (function-def? e)
-                (list e)
-                (list `(RETURN ,e)))))
+      (let ((exp (car e*)))
+        (if (list? (cdr e*))
+            ;; begin expressions are spliced in
+            (begin
+              ((if (begin? exp) list-append cons)
+               (compile* exp env)
+               (compile-sequence (cdr e*) env)))
+            (let ((e (compile* exp env)))
+              (cond
+               ((begin? exp) e)
+               ((function-def? e) (list e))
+               (else (list `(RETURN ,e)))))))
       '()))
 
 (define (compile-application v a* env)
@@ -456,12 +548,27 @@
     (case (car exp)
       ((define) (compile-definition (cadr exp) (cddr exp) cenv))
       ((set!) (compile-assignment (cadr exp) (caddr exp) cenv))
-      ((if) (compile-conditional exp cenv))
+      ((if) (compile-conditional (cadr exp)
+                                 (caddr exp)
+                                 (if (null? (cdddr exp))
+                                     #f
+                                     (car (cdddr exp)))
+                                 cenv))
       ((begin) (compile-sequence (cdr exp) cenv))
       (else (compile-application (car exp) (cdr exp) cenv))))))
 
-;; hoist all functions within f
-(define (hoist f)
+;; hoist functions to top-level
+(define (hoist exp)
+  (let ((hoisted (%hoist exp)))
+    ;; simply combine the top-leve expressions with the list of
+    ;; functions
+    (if (null? (car hoisted))
+        (cadr hoisted)
+        (if (null? (cadr hoisted))
+            (car hoisted)
+            (cons (car hoisted) (cadr hoisted))))))
+
+(define (%hoist exp)
   (define (reconstruct func e*)
     (make-function-def
      (function-name func)
@@ -469,41 +576,48 @@
      (function-env func)
      (reverse e*)))
 
-  ;; walk through the function body recursively and accumulate 2
-  ;; lists, one with expressions and the other with the functions.
-  (define sliced
+  ;; walk through each element, passing a 2-element list through to
+  ;; keep track of expressions and functions
+  (cond
+   ((or (literal? exp)
+        (symbol? exp)
+        (vector? exp)
+        (dict? exp)) (list exp '()))
+   ((function-def? exp)
+    (let ((r (%hoist (function-body exp))))
+      (list '() (cons (reconstruct exp (reverse (car r)))
+                      (cadr r)))))
+   (else
     (fold (lambda (el acc)
-            (if (function-def? el)
-                (let ((hoisted (hoist el)))
-                  (list (car acc)
-                        (list-append
-                         hoisted
-                         (cadr acc))))
-                (list (cons el (car acc))
-                      (cadr acc))))
+            (let ((r (%hoist el)))
+              (list (if (null? (car r))
+                        (car acc)
+                        (list-append (car acc) (list (car r))))
+                    (list-append (cadr acc) (cadr r)))))
           (list '() '())
-          (function-body f)))
+          exp))))
 
-  ;; Returns a list of functions, reconstructing the original
-  ;; function with all functions removed
-  (list-append
-   (cadr sliced)
-   (list (reconstruct f (car sliced)))))
+;; allocate registers for each function
+(define (allocate e*)  
+  ;; we expect that all functions have been hoisted by now, so just
+  ;; need to walk across the top-level forms
+  (for-each (lambda (e)
+              (if (function-def? e) (%allocate e) e))
+            e*)
+  e*)
 
-(define (allocate funcs)
-  ;; allocate registers for each function
-  (map
-   (lambda (f)
-     (let ((refs (map (lambda (v)
-                        (if (variable-ref? v)
-                            (cadr v)
-                            (set-name v)))
-                      (scan (function-body f)
-                            (lambda (e) (or (== (car e) 'VARIABLE-REF)
-                                       (== (car e) 'SET)))))))
-       (allocate-registers (function-env f) refs)))
-   funcs)
-  funcs)
+(define (%allocate f)
+  (allocate-registers
+   (function-env f)
+   (map (lambda (v)
+          (if (variable-ref? v)
+              (cadr v)
+              (set-name v)))
+        (scan (function-body f)
+              (lambda (e)
+                (or (== (car e) 'SET)
+                    (and (== (car e) 'VARIABLE-REF)
+                         (not (global-variable? (cadr e))))))))))
 
 (define (linearize-deref exp target)
   (let ((x (deref-value exp))
@@ -525,19 +639,23 @@
 (define (replace-variable-refs exp env)
   (walk exp
         (lambda (e)
-          (if (== (car e) 'VARIABLE-REF)
-              (let ((v (cadr e))
-                    (r (lookup-variable-reg env v)))
-                (if (not r)
-                    (throw "error, register not assigned"))
-                r)
-              #f))))
+          (cond
+           ((== (car e) 'VARIABLE-REF)
+            (let ((v (cadr e))
+                  (r (lookup-variable-reg env v)))
+              (if (not r)
+                  (throw "error, register not assigned"))
+              r))
+           ((== (car e) 'FUNCTION-REF)
+            (namespaced-function-name env (cadr e)))
+           (else #f)))))
 
 (define (linearize-function exp)
   ;; Scan the body for variable references and allocate registers
-  (let ((env (function-env exp)))
-    `(,(function-name exp)
-      ,@(linearize (function-body (replace-variable-refs exp env)))
+  (let ((env (function-env exp))
+        (replaced (replace-variable-refs exp env)))
+    `(,(namespaced-function-name env (function-name exp))
+      ,@(linearize (function-body replaced))
       (SET PC POP))))
 
 (define (linearize-assignment exp)
@@ -551,11 +669,27 @@
       `((SET ,target ,(const-value exp)))
       '()))
 
+(define (linearize-if exp target)
+  (let ((exit-label (string->symbol (str "exit-" (gensym))))
+        (alt-label (string->symbol (str "alt-" (gensym)))))
+    (list-append
+     (linearize (if-cnd exp) 'J)
+     `((IFE J 0)
+       (SET PC ,alt-label)
+       ,@(linearize (if-tru exp) target)
+       (SET PC ,exit-label)
+       ,alt-label
+       ,@(if (if-alt exp)
+             (linearize (if-alt exp) target)
+             '())
+       ,exit-label))))
+
 (define (linearize-arg exp reg used-regs)
   ;; if it's an application, we need to save the regsiters from all
   ;; previous argument values because all crazy things might happen in
   ;; the calling function
-  (if (application? exp)
+  (if (or (application? exp)
+          (if? exp))
       (list-append
        (map (lambda (r)
               `(SET PUSH ,r))
@@ -651,7 +785,7 @@
          `((,(application-name exp) ,@(map (lambda (a)
                                              (dict-ref arg-regs a))
                                            (function-args def))))
-         (cons `(JSR ,(application-name exp))
+         (cons `(JSR ,(application-full-name env exp))
                (if (and target (not (== target 'J)))
                    (list `(SET ,target J))
                    '())))
@@ -675,6 +809,7 @@
           ((SET) (linearize-assignment exp))
           ((CONST) (linearize-constant exp target))
           ((DEREF) (linearize-deref exp target))
+          ((IF) (linearize-if exp target))
           (else
            (let loop ((lst exp)
                       (acc '()))
@@ -692,19 +827,7 @@
 
 (define (compile exp)
   (r-init-initialize!)
-
-  (let ((exp (compile* exp r-init)))
-    (cond
-     ((atom? exp) exp)
-     ((function-def? exp) (allocate (hoist exp)))
-     (else
-      (reverse
-       (fold (lambda (el acc)
-               (if (function-def? el)
-                   (list-append (allocate (hoist el)) acc)
-                   (cons el acc)))
-             '()
-             exp))))))
+  (allocate (hoist (compile* exp r-init))))
 
 (define (output . e*)
   ;; wow, this is bad code
@@ -717,6 +840,20 @@
               (str "0x" (v.toString 16)))
              ((vector? v)
               (str "[" (apply str* (vector->list v)) "]"))
+             ((symbol? v)
+              ;; This is hacky, but gets rid of a bunch of invalid
+              ;; characters in names
+              (set! v (v.replace (RegExp "-" "g") "_dash_"))
+              (set! v (v.replace (RegExp "\\?" "g") "_p_"))
+              (set! v (v.replace (RegExp "\\!" "g") "_excl_"))
+              (set! v (v.replace (RegExp ">" "g") "_gt_"))
+              (set! v (v.replace (RegExp "<" "g") "_lt_"))
+              (set! v (v.replace (RegExp "%" "g") "_per_"))
+              (set! v (v.replace (RegExp "=" "g") "_eq_"))
+              (set! v (v.replace (RegExp "\\/" "g") "_slash_"))
+              (set! v (v.replace (RegExp "\\+" "g") "_plus_"))
+              (set! v (v.replace (RegExp "\\*" "g") "_star_"))
+              v)
              (else v)))
           vals)))
   
@@ -730,7 +867,7 @@
                                              (cadr e) ", "
                                              (caddr e))))
                    (else (throw (str "invalid expression: " e))))))
-               ((symbol? e) (println (str ":" e)))
+               ((symbol? e) (println (str* ":" e)))
                (else
                 (throw (str "invalid expression: " e)))))
             (apply list-append e*)))
@@ -740,62 +877,108 @@
 ;; non-linearized forms
 (define (strip-envs exp)
   (if (list? exp)
-      (case (car exp)
-        ((FUNCTION) `(FUNCTION ,(function-name exp)
-                               ,(function-args exp)
-                               ,(strip-envs (function-body exp))))
-        ((CALL) `(CALL ,(application-name exp) ,(application-args exp)))
-        ((SET) `(SET ,(set-name exp) ,(strip-envs (set-value exp))))
-        (else (map strip-envs exp)))
+      (reverse
+       (fold (lambda (el acc)
+               (if (environment? el)
+                   acc
+                   (cons (strip-envs el) acc)))
+             '()
+             exp))
       exp))
 
-;; print a non-linearized form without its envs
+;; print a non-linearized form without its envs (which have tons of
+;; circular references)
 (define (pp-w/o-envs exp)
-  (pp (strip-envs exp)))
+  (let ((stripped (strip-envs exp)))
+    (pp stripped)))
 
-(define-prim (+ x y))
-(define-prim (- x y))
-(define-prim (/ x y))
-(define-prim (* x y))
-(define-prim (print pos text))
-(define-prim (deref x))
-
-(define-native (ADD x y))
 (define-native (SET x y))
+(define-native (ADD x y))
+(define-native (SUB x y))
+(define-native (MUL x y))
+(define-native (DIV x y))
+(define-native (MOD x y))
+(define-native (SHL x y))
+(define-native (SHR x y))
+(define-native (AND x y))
 (define-native (BOR x y))
+(define-native (XOR x y))
+(define-native (IFE x y))
+(define-native (IFN x y))
+(define-native (IFG x y))
+(define-native (IFB x y))
 
-(define std-lib '())
+(define-global 'PC)
+(define-global 'SP)
+(define-global 'POP)
+(define-global 'PUSH)
+(define-global 'A)
+(define-global 'B)
+(define-global 'C)
+(define-global 'X)
+(define-global 'Y)
+(define-global 'Z)
+(define-global 'I)
+(define-global 'J)
+(define-global '__exit)
 
-(output
- '((JSR __main))
- std-lib
- (linearize
-  (compile
-   (expand
-    '(begin
-       (define (__main)
-         (define color 0xf000)
-         (define bg-color 0)
+(define (compile-program src . target)
+  ;; read the source and force it into a begin expression
+  (let ((target (if (null? target) #f (car target)))
+        (exp (read src))
+        (lib (read (fs.readFileSync "lib.ol" "utf-8")))
+        (exp (if (and (list? exp)
+                      (== (car exp) 'begin))
+                 exp
+                 `(begin ,exp))))
 
-         (define-macro (print pos text)
-           (let ((color 0xf000)
-                 (bg-color 0))
-             (if (and (number? pos)
-                      (number? text))
-                 `(SET [,(+ 0x8000 pos)]
-                       ,(bitwise-or
-                         text
-                         (bitwise-or color bg-color)))
-                 `(print* ,pos ,text))))
-         
-         (define (print* pos text)
-           (ADD pos 0x8000)
-           (BOR text color)
-           (BOR text bg-color)
-           (SET [pos] text))
-         
-         (print 0 0x35)
-         (print 1 0x20)
-         (print 2 0x36)
-         (print 3 0x20)
-         (print 4 0x37)))))))
+    (define code
+      ;; wrap it around these forms because they are required for it
+      ;; to work right, and splice in the body of the begin exp
+      `(begin
+         ,@(cdr lib)
+         (define (entry)
+           ,@(cdr exp))
+         ))
+    
+    (case target
+      ((expand) (expand code))
+      
+      ((compile-phase1)
+       (r-init-initialize!)
+       (compile* (expand code) r-init))
+      
+      ((compile-phase2)
+       (compile (expand code)))
+      
+      ((linearize)
+       (linearize (compile (expand code))))
+      
+      (else
+       (output
+        '((JSR global-entry)
+          (SET PC __exit))
+        (linearize
+         (compile
+          (expand
+           code)))
+        '(__exit
+          (SET PC __exit)))))))
+
+(define (print-expand src)
+  (pp (compile-program src 'expand)))
+
+(define (print-compiled-phase1 src)
+  (pp-w/o-envs (compile-program src 'compile-phase1)))
+
+(define (print-compiled-phase2 src)
+  (pp-w/o-envs (compile-program src 'compile-phase2)))
+
+(define (print-linearized src)
+  (pp (compile-program src 'linearize)))
+
+(set! module.exports {:compile compile-program
+                      :print-expand print-expand
+                      :print-compiled-phase1 print-compiled-phase1
+                      :print-compiled-phase2 print-compiled-phase2
+                      :print-linearized print-linearized})
