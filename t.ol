@@ -27,8 +27,7 @@
           (list '() '())
           exp))))
 
-(define h (%hoist '(d define
-                          (FUNCTION (1
+(define h (%hoist '((FUNCTION (1
                                      2
                                      (FUNCTION (19 23))))
                           (FUNCTION (4 5)))))

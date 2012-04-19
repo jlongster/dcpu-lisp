@@ -159,6 +159,7 @@
   (vector-set! frame 2 name))
 
 (define top-frame car)
+(define next-frames cdr)
 
 (define (add-to-frame frame vars)
   (let ((v* (frame-vars frame))
@@ -602,7 +603,13 @@
   ;; we expect that all functions have been hoisted by now, so just
   ;; need to walk across the top-level forms
   (for-each (lambda (e)
-              (if (function-def? e) (%allocate e) e))
+              (if (function-def? e)
+                  (if (null? (function-body e))
+                      (throw (str "error: empty function body: "
+                                  (function-name e)
+                                  " (WAT?)"))
+                      (%allocate e))
+                  e))
             e*)
   e*)
 
@@ -653,8 +660,17 @@
 (define (linearize-function exp)
   ;; Scan the body for variable references and allocate registers
   (let ((env (function-env exp))
-        (replaced (replace-variable-refs exp env)))
+        (replaced (replace-variable-refs exp env))
+        (vars (frame-vars (top-frame env)))
+)
     `(,(namespaced-function-name env (function-name exp))
+      ,@(fold (lambda (el acc)
+                (if (not (== (dict-ref vars el) 'not-allocated))
+                    (cons
+                     `(SET ,(dict-ref vars el) POP) acc)
+                    acc))
+              '()
+              (function-args exp))
       ,@(linearize (function-body replaced))
       (SET PC POP))))
 
@@ -685,7 +701,7 @@
        ,exit-label))))
 
 (define (linearize-arg exp reg used-regs)
-  ;; if it's an application, we need to save the regsiters from all
+  ;; if it's an application, we need to save the registers from all
   ;; previous argument values because all crazy things might happen in
   ;; the calling function
   (if (or (application? exp)
@@ -694,14 +710,15 @@
        (map (lambda (r)
               `(SET PUSH ,r))
             used-regs)
-       (linearize exp reg)
+       (linearize exp 'J)
        (map (lambda (r)
               `(SET ,r POP))
-            (reverse used-regs)))
-      (linearize exp reg)))
+            (reverse used-regs))
+       '((SET PUSH J)))
+      (linearize exp 'PUSH)))
 
-(define (linearize-arguments arg-values arg-regs)  
-  (let loop ((a* (keys arg-values))
+(define (linearize-arguments args arg-values arg-regs)  
+  (let loop ((a* args)
              (used-regs '())
              (acc '()))
     (if (null? a*)
@@ -760,12 +777,13 @@
                     '()
                     (vals (frame-vars (top-frame env)))))
         (arg-regs (frame-vars (top-frame fenv)))
-        (args (zip (function-args def)
-                   (application-args exp))))
+        (arg-vals (zip (function-args def)
+                       (application-args exp)))
+        (ret (string->symbol (str "return-" (gensym)))))
 
-    (if (not (== (length (keys args))
+    (if (not (== (length (keys arg-vals))
                  (length (keys arg-regs))))
-        (let ((argv (list->vector (map str args))))
+        (let ((argv (list->vector (map str arg-vals))))
           (throw (str "wrong number of arguments: ("
                       (application-name exp)
                       " "
@@ -780,15 +798,18 @@
                  acc))
            '()
            regs)
-     (linearize-arguments args arg-regs)
+     `((SET PUSH ,ret))
+     (linearize-arguments (function-args def) arg-vals arg-regs)
      (if (function-native? def)
          `((,(application-name exp) ,@(map (lambda (a)
                                              (dict-ref arg-regs a))
                                            (function-args def))))
-         (cons `(JSR ,(application-full-name env exp))
-               (if (and target (not (== target 'J)))
-                   (list `(SET ,target J))
-                   '())))
+         (cons
+          `(SET PC ,(application-full-name env exp))
+          (cons ret
+                (if (and target (not (== target 'J)))
+                    (list `(SET ,target J))
+                    '()))))
      (fold (lambda (r acc)
              (if (not (== r target))
                  (cons `(SET ,r POP)
@@ -938,9 +959,8 @@
       `(begin
          ,@(cdr lib)
          (define (entry)
-           ,@(cdr exp))
-         ))
-    
+           ,@(cdr exp))))
+
     (case target
       ((expand) (expand code))
       
@@ -949,6 +969,10 @@
        (compile* (expand code) r-init))
       
       ((compile-phase2)
+       (r-init-initialize!)
+       (hoist (compile* (expand code) r-init)))
+
+      ((compile-phase3)
        (compile (expand code)))
       
       ((linearize)
@@ -974,6 +998,9 @@
 (define (print-compiled-phase2 src)
   (pp-w/o-envs (compile-program src 'compile-phase2)))
 
+(define (print-compiled-phase3 src)
+  (pp-w/o-envs (compile-program src 'compile-phase3)))
+
 (define (print-linearized src)
   (pp (compile-program src 'linearize)))
 
@@ -981,4 +1008,5 @@
                       :print-expand print-expand
                       :print-compiled-phase1 print-compiled-phase1
                       :print-compiled-phase2 print-compiled-phase2
+                      :print-compiled-phase3 print-compiled-phase3
                       :print-linearized print-linearized})

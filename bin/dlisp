@@ -8,6 +8,7 @@ var src;
 var expand = false;
 var compiled1 = false;
 var compiled2 = false;
+var compiled3 = false;
 var linearized = false;
 
 if(args[0] == '-p') {
@@ -22,6 +23,11 @@ if(args[0] == '-c1') {
 
 if(args[0] == '-c2') {
     compiled2 = true;
+    args = args.slice(1);
+}
+
+if(args[0] == '-c3') {
+    compiled3 = true;
     args = args.slice(1);
 }
 
@@ -47,6 +53,9 @@ else if(compiled1) {
 }
 else if(compiled2) {
     comp["print-compiled-phase2"](src);
+}
+else if(compiled3) {
+    comp["print-compiled-phase3"](src);
 }
 else if(linearized) {
     comp["print-linearized"](src);
