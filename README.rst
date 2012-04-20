@@ -254,6 +254,9 @@ The ``do`` construct provides iteration. There are two versions of ``do``::
 Future work
 -----------
 
+* More optimizations
+* A stepping-debugger
+
 There are many more static optimizations we could do. I'm sure there
 are bugs in this too, as it is rather untested. Please report issues
 on github if you find any, or contact me at longster@gmail.com.
