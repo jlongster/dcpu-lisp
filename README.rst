@@ -2,7 +2,47 @@ LCPU is a simple Lisp-like language that compiles to optimized DCPU-16
 assembly code. It is a very restricted subset of Lisp. There is no GC,
 and thus no data structures or run-time closures.
 
-This is intended for usage in Mojam's next game, 0x10c.
+This is intended for usage in Mojam's next game, `0x10c <http://0x10c.com/>`_.
+
+Example program: https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.l
+Generated assembly: https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.asm
+Watch it run here: http://0x10co.de/imq63
+
+High-level Assembly
+-------------------
+
+Think of it as a light wrapper around the assembly code, providing
+named variables, lexically-bound closures, and a little bit of helpful
+magic here and there.
+
+Create a function like so::
+
+    (define (foo x)
+      (+ x 1))
+
+Variable references are statically referenced and compiled out
+straight to registers. In one function, you are not allowed more
+variable definitions than there are registers (7, and the 8th is used
+for the return value).
+
+Nested functions are allowed::
+
+    (define (foo x)
+      (define (bar y)
+        (+ x y))
+      (bar 10))
+
+Run-time closures are not available because of the lack of GC, so the
+closed function cannot out-live its parent (you can't return ``bar``).
+
+Only 2 kinds of values exist: functions and 16-bit numbers.
+
+There is a lot more we could do to enrich the language but still keep
+provable semantics statically.
+
+It is written in Outlet, a Lisp that compiled to Javascript, so the
+compiler can run in browser. See https://github.com/jlongster/outlet.
+The js is packaged with the project so you can run it with Node.
 
 Features
 --------
@@ -24,59 +64,25 @@ Does Not Have
 * Data types/structures
 * Type inference
 
-High-level Assembly
--------------------
-
-Think of it as a light wrapper around the assembly code, providing
-named variables, lexically-bound closures, and a little bit of helpful
-magic here and there.
-
-Create a function like so:
-
-    (define (foo x)
-      (+ x 1))
-
-Variable references are statically referenced and compiled out
-straight to registers. In one function, you are not allowed more
-variable definitions than there are registers (7, and the 8th is used
-for the return value).
-
-Nested functions are allowed:
-
-    (define (foo x)
-      (define (bar y)
-        (+ x y))
-      (bar 10))
-
-Run-time closures are not available because of the lack of GC, so the
-closed function cannot out-live its parent (you can't return `bar`).
-
-Only 2 kinds of values exist: functions and 16-bit numbers.
-
-There is a lot more we could do to enrich the language but still keep
-provable semantics statically.
-
-It is written in Outlet, a Lisp that compiled to Javascript, so the
-compiler can run in browser. See https://github.com/jlongster/outlet.
-The js is packaged with the project so you can run it with Node.
-
 Usage
 -----
 
 Use the `lcpu` script in the `bin` directory:
 
-`./bin/lcpu program.l`
+``./bin/lcpu program.l``
 
 It will print the generated assembly to standard output.
 
-lcpu [-p] [-c1] [-c2] [-c3] [-l] [-e] <program/expression>
+::
 
-* -p: print the expanded program
-* -c1: print the code after the first compilation phase
-* -c2: print the code after the second compilation phase
-* -c3: print the code after the third compilation phase
-* -l: print the code after the linearization phase
-* -e: run an expression instead of a file
+    lcpu [-p] [-c1] [-c2] [-c3] [-l] [-e] <program/expression>
+
+    * -p: print the expanded program
+    * -c1: print the code after the first compilation phase
+    * -c2: print the code after the second compilation phase
+    * -c3: print the code after the third compilation phase
+    * -l: print the code after the linearization phase
+    * -e: run an expression instead of a file
 
 Examples
 --------
@@ -84,7 +90,7 @@ Examples
 Number Printing
 ~~~~~~~~~~~~~~~
 
-This code defines `print-number` which prints a number to the console:
+This code defines `print-number` which prints a number to the console::
 
     (define (print color bg-color x y text)
       (MUL y 32)
@@ -201,12 +207,12 @@ For example, here is a function that prints values to the console:
       (BOR text bg-color)
       (SET [y] text))
 
-Dereferencing is supported with the normal bracket syntax (i.e. `[y]`).
+Dereferencing is supported with the normal bracket syntax (i.e. ``[y]``).
 
 Macros
 ------
 
-`define-macro` is provided for defining macros:
+``define-macro`` is provided for defining macros::
 
     (define-macro (foo t x y)
       `(begin
@@ -221,6 +227,8 @@ is converted into:
   (define z (+ 1 2))
   (MUL z 50))
 
+This is a powerful construct to make sure you can generate optimized assembly code.
+
 Future work
 -----------
 
@@ -228,4 +236,4 @@ There are many more static optimizations we could do. I'm sure there
 are bugs in this too, as it is rather untested. Please report issues
 on github if you find any, or contact me at longster@gmail.com.
 
-Follow me on twitter: @jlongster
+Follow me on twitter: `@jlongster <http://twitter.com/jlongster>`_
