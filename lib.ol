@@ -14,39 +14,41 @@
 
 ;; arithmetic
 
-(define (+ x y)
-  (ADD x y)
-  x)
+(define-inline (+ t x y)
+  (SET t x)
+  (ADD t y))
 
-(define (- x y)
-  (SUB x y)
-  x)
+(define-inline (- t x y)
+  (SET t x)
+  (SUB t y))
 
-(define (* x y)
-  (MUL x y)
-  x)
+(define-inline (* t x y)
+  (SET t x)
+  (MUL t y))
 
-(define (/ x y)
-  (DIV x y)
-  x)
+(define-inline (/ t x y)
+  (SET t x)
+  (DIV t y))
 
-(define (% x y)
-  (MOD x y)
-  x)
+(define-inline (% t x y)
+  (SET t x)
+  (MOD t y))
 
-(define (<< x y)
-  (SHL x y)
-  x)
+(define-inline (<< t x y)
+  (SET t x)
+  (SHL t y))
 
-(define (>> x y)
-  (SHR x y)
-  x)
+(define-inline (>> t x y)
+  (SET t x)
+  (SHR t y))
 
 ;; predicates
 
 ;; we must branch on the instruction after the test, and jump to a
 ;; unique place and return a success value. do this by creating an
 ;; internal function and using `SET PC` to jump right to it.
+;; TODO: make these inlinable
+
 (define (< x y)
   (define (ret) (SET J 0))
   (IFG x y)
@@ -55,9 +57,23 @@
   (SET PC ret)
   (SET J 1))
 
+(define (<= x y)
+  (define (ret) (SET J 0))
+  (IFG x y)
+  (SET PC ret)
+  (SET J 1))
+
 (define (> x y)
   (define (ret) (SET J 1))
   (IFG x y)
+  (SET PC ret)
+  (SET J 0))
+
+(define (>= x y)
+  (define (ret) (SET J 1))
+  (IFG x y)
+  (SET PC ret)
+  (IFE x y)
   (SET PC ret)
   (SET J 0))
 
@@ -69,6 +85,8 @@
 
 ;; looping
 
+;; TODO: this is a quick hack, and is recursive, while it should be
+;; iterative. need to convert it into optimized assembly.
 (define-macro (do act . body)
   (if (not (symbol? (car act)))
       (throw (str "do requires a variable name as "
