@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Outlet REPL</title>
+    <link type="text/css" href="index.css" rel="stylesheet" />
+    <script type="text/javascript">
+      var process = {};
+      process.argv = ['web', 'web'];
+      process.stdin = {};
+      process.stdin.on = function() {};
+      process.stdin.resume = function() {};
+      process.stdin.proceed = function() {};
+    </script>
+    <script type="text/javascript" src="web.js"></script>
+    <script type="text/javascript" src="runtime.js"></script>
+    <script type="text/javascript" src="ui.js"></script>
+  </head>
+  <body>
+    <div class="content">
+      <h2>Welcome to the Outlet REPL</h2>
+      <p>
+        Outlet is a new language to experiment with compiling Lisp to
+        other languages like javascript and lua. Read more about
+        it <a href="http://jlongster.com/2012/01/04/outlet-my-lisp-to-javascript-experiment.html">here</a>
+        and download it <a href="https://github.com/jlongster/outlet">here</a>.
+      </p>
+      <div class="repl-title">
+        Type some outlet below:
+        <!-- <div class="lang"> -->
+        <!--   Target: -->
+        <!--   <select name="lang" id="lang"> -->
+        <!--     <option value="js">js</option> -->
+        <!--     <option value="lua">lua</option> -->
+        <!--   </select> -->
+        <!-- </div> -->
+      </div>
+      <div class="input">
+        <textarea id="src" rows="10" cols="50"></textarea>
+      </div>
+      <div class="buttons">
+        <input class="run" type="submit" value="Run" onclick="compile();" />
+        <input class="share" type="submit" value="Share" onclick="share();" />
+      </div>
+      <h4>result</h4>
+      <div id="result"></div>
+      <h4>output</h4>
+      <div id="output"></div>
+      <h4>generated</h4>
+      <div id="generated"></div>
+      <h2>Examples</h2>
+      <pre>
+(define foo 5)
+
+(define (bar x)
+  (+ x 1))
+
+(define (buz x)
+  (let ((y x)
+        (add_1 (if (< x 0)
+                   (lambda (n) (- n 1))
+                   (lambda (n) (+ n 1)))))
+    (add_1 y)))
+
+(define (fib n)
+  (if (eq? n 0)
+      n
+      (+ n (fib (- n 1)))))
+
+(for-each
+ (lambda (x) (display x))
+ '(1 2 3 4))
+
+;; rest parameters
+
+(define (baz one two . three)
+  (pp three))
+
+(baz "a" "b" "c" "d" "e" "f")
+
+;; eval
+
+(pp (eval-outlet '(baz 1 2 3 4)))
+
+;; ->string
+
+(display (->string '(foo 2 bar 4 "hel\nlo\"fdfsf")))
+
+;; Example tracer using `alert`:
+
+(require (trace "./trace"))
+(trace.set-prompt alert)
+
+(trace-source (let ((i (+ 4 5)))
+                (+ i (* 2 (/ 3 4)))))
+
+</pre>
+    </div>
+
+    <script type="text/javascript">fill_code();</script>
+  </body>
+</html>
+
