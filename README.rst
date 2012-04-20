@@ -226,9 +226,9 @@ Macros
 
 is converted into::
 
-(begin
-  (define z (+ 1 2))
-  (MUL z 50))
+    (begin
+      (define z (+ 1 2))
+      (MUL z 50))
 
 This is a powerful construct to make sure you can generate optimized assembly code.
 
