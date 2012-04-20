@@ -185,6 +185,42 @@ full assembly code in examples/fib.asm.
 You can also view the tests in the `tests` directory to see how
 certain expressions are compiled.
 
+Inline Assembly
+---------------
+
+If you want, you can code straight DCPU-16 assembly into your program.
+For example, here is a function that prints values to the console:
+
+    (define (print color bg-color x y text)
+      (MUL y 32)
+      (ADD y x)
+      (ADD y 0x8000)
+      (SHL color 12)
+      (SHL bg-color 8)
+      (BOR text color)
+      (BOR text bg-color)
+      (SET [y] text))
+
+Dereferencing is supported with the normal bracket syntax (i.e. `[y]`).
+
+Macros
+------
+
+`define-macro` is provided for defining macros:
+
+    (define-macro (foo t x y)
+      `(begin
+         (define ,t (+ ,x ,y))
+         (MUL ,t 50)))
+
+    (foo z 1 2)
+
+is converted into:
+
+(begin
+  (define z (+ 1 2))
+  (MUL z 50))
+
 Future work
 -----------
 
