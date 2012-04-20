@@ -4,11 +4,9 @@ and thus no data structures or run-time closures.
 
 This is intended for usage in Mojam's next game, `0x10c <http://0x10c.com/>`_.
 
-Example program: https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.l
-
-Generated assembly: https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.asm
-
-Watch it run here: http://0x10co.de/imq63
+* Example program: https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.l
+* Generated assembly: https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.asm
+* Watch it run here: http://0x10co.de/imq63
 
 High-level Assembly
 -------------------
