@@ -84,6 +84,8 @@ It will print the generated assembly to standard output.
     * -l: print the code after the linearization phase
     * -e: run an expression instead of a file
 
+If you get an error, you may have to run this: ``touch compiler.ol && make``
+
 Examples
 --------
 
