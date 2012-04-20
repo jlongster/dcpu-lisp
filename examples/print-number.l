@@ -22,4 +22,10 @@
 (define (print-number n)
   (%print-number n 0))
 
-(print-number 12345)
+(define (fib a)
+  (if (<= a 1)
+      1
+      (+ (fib (- a 1))
+         (fib (- a 2)))))
+
+(print-number (fib 8))
