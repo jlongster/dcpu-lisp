@@ -87,6 +87,9 @@ It will print the generated assembly to standard output.
 Examples
 --------
 
+You can see all the examples in the `examples <https://github.com/jlongster/dcpu-lisp/tree/master/examples>`_
+directory.
+
 Number Printing
 ~~~~~~~~~~~~~~~
 
@@ -195,7 +198,7 @@ Inline Assembly
 ---------------
 
 If you want, you can code straight DCPU-16 assembly into your program.
-For example, here is a function that prints values to the console:
+For example, here is a function that prints values to the console::
 
     (define (print color bg-color x y text)
       (MUL y 32)
@@ -221,13 +224,32 @@ Macros
 
     (foo z 1 2)
 
-is converted into:
+is converted into::
 
 (begin
   (define z (+ 1 2))
   (MUL z 50))
 
 This is a powerful construct to make sure you can generate optimized assembly code.
+
+Iteration
+---------
+
+The ``do`` construct provides iteration. There are two versions of ``do``::
+
+    ;; Runs the expression with x starting at 0 and incrementing by 1
+    ;; until it hits 32
+    (do (x 0 32)
+        (print (* x 20)))
+
+    ;; Or you can provide your own start, stepping and stopping
+    ;; expressions.
+    ;; Here x starts as 0, is incremented by 5 and continues looping while
+    ;; x is less than 100
+    (do (x 0 (+ x 5) (< x 100))
+        (print x)
+        (print (/ x 2)))
+
 
 Future work
 -----------
