@@ -2,7 +2,7 @@ LCPU is a simple Lisp-like language that compiles to optimized DCPU-16
 assembly code. It is a very restricted subset of Lisp. There is no GC,
 and thus no data structures or run-time closures.
 
-This is intended for usage in Mojam's next game, `0x10c <http://0x10c.com/>`_.
+This is intended for usage in Mojang's next game, `0x10c <http://0x10c.com/>`_.
 
 * Example program: https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.l
 * Generated assembly: https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.asm
@@ -83,6 +83,8 @@ It will print the generated assembly to standard output.
     * -c3: print the code after the third compilation phase
     * -l: print the code after the linearization phase
     * -e: run an expression instead of a file
+
+If you get an error, you may have to run this: ``touch compiler.ol && make``
 
 Examples
 --------
@@ -226,9 +228,9 @@ Macros
 
 is converted into::
 
-(begin
-  (define z (+ 1 2))
-  (MUL z 50))
+    (begin
+      (define z (+ 1 2))
+      (MUL z 50))
 
 This is a powerful construct to make sure you can generate optimized assembly code.
 
