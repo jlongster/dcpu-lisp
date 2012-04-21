@@ -1,6 +1,7 @@
 ;; This is written in Outlet: https://github.com/jlongster/outlet
 
-(require (fs "fs"))
+(require (fs "fs")
+         (path "path"))
 
 ;; util
 
@@ -92,7 +93,7 @@
   (and (dict-ref %macros name) #t))
 
 (install-macro 'define-macro
-               (lambda (form e)
+               (lambda (form)
                  (let ((sig (cadr form)))
                    (let ((name (car sig))
                          (pattern (cdr sig))
@@ -102,7 +103,7 @@
                      0))))
 
 (install-macro 'define-inline
-               (lambda (form e)
+               (lambda (form)
                  (let ((name/args (cadr form))
                        (body (cddr form)))
                    (install-inline (car name/args)
@@ -111,7 +112,7 @@
                    0)))
 
 (install-macro 'define-prim
-               (lambda (form e)
+               (lambda (form)
                  (let ((name/args (cadr form))
                        (body (cddr form)))
                    (install-global-func (car name/args)
@@ -119,6 +120,29 @@
                                         '()
                                         #f)
                    0)))
+
+(install-macro 'require
+               (lambda (form)
+                 (read (get-file-source (cadr form)))))
+
+(install-macro 'include
+               (lambda (form)
+                 `(%raw ,(get-file-source (cadr form)))))
+
+(define (get-file-source file)
+  (define (rd p)
+    (if p
+        (let ((joined (path.join p file)))
+          (if (path.existsSync joined)
+              (fs.readFileSync joined "utf-8")
+              #f))
+        #f))
+
+  (let ((src (or (rd (get-current-filepath))
+                 (rd __dirname))))
+    (if (not src)
+        (throw (str "cannot find file: " file))
+        src)))
 
 (define (make-macro pattern body)
   (let ((x (gensym))
@@ -661,6 +685,7 @@
                                      (car (cdddr exp)))
                                  cenv))
       ((begin) (compile-sequence (cdr exp) cenv))
+      ((%raw) `(RAW ,(cadr exp)))
       (else (compile-application (car exp) (cdr exp) cenv))))))
 
 ;; hoist functions to top-level
@@ -990,6 +1015,7 @@
           ((CONST) (linearize-constant exp target))
           ((DEREF) (linearize-deref exp target))
           ((IF) (linearize-if exp target))
+          ((RAW) (list exp))
           (else
            (let loop ((lst exp)
                       (acc '()))
@@ -1038,15 +1064,16 @@
   (for-each (lambda (e)
               (cond
                ((list? e)
-                (if (== (car e) '%)
-                    (begin
-                      (print "; ")
-                      (let ((v* (list->vector (map str (cdr e)))))
-                        (println (v*.join " "))))
-                    (begin
-                      (print (str (car e) " "))
-                      (let ((v (list->vector (map to-str (cdr e)))))
-                        (println (v.join ", "))))))
+                (case (car e)
+                  ((%) (begin
+                         (print "; ")
+                         (let ((v* (list->vector (map str (cdr e)))))
+                           (println (v*.join " ")))))
+                  ((RAW) (println (cadr e)))
+                  (else
+                   (print (str (car e) " "))
+                   (let ((v (list->vector (map to-str (cdr e)))))
+                     (println (v.join ", "))))))
                ((symbol? e) (println (str ":" (to-str e))))
                (else
                 (throw (str "invalid expression: " e)))))
@@ -1103,6 +1130,17 @@
 (define-global 'I)
 (define-global 'J)
 (define-global '__exit)
+
+(define %current-filepath #f)
+
+(define (get-current-filepath)
+  %current-filepath)
+
+(define (compile-file path . rest)
+  (set! %current-filepath path)
+  (apply
+   compile-program
+   (cons (fs.readFileSync path "utf-8") rest)))
 
 (define (compile-program src . rest)
   ;; read the source and force it into a begin expression
@@ -1174,7 +1212,8 @@
 (define (print-linearized src)
   (pp (compile-program src 'linearize)))
 
-(set! module.exports {:compile compile-program
+(set! module.exports {:compile-file compile-file
+                      :compile compile-program
                       :print-expand print-expand
                       :print-compiled-phase1 print-compiled-phase1
                       :print-compiled-phase2 print-compiled-phase2
