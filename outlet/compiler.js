@@ -151,21 +151,7 @@ return fold((function(el,acc){
 return (acc + 1);
 }),0,lst);
 });
-var list_dash_append = (function(){
-var lsts = vector_dash__gt_list(Array.prototype.slice.call(arguments, 0));
-var l_star_ = (function() {if(null_p_(lsts)) {return _emptylst;
-} else {return lsts;
-}})()
-;
-return (function() {if(null_p_(l_star_)) {return _emptylst;
-} else {return (function() {if(null_p_(cdr(l_star_))) {return car(l_star_);
-} else {return _list_dash_append(car(l_star_),apply(list_dash_append,cdr(l_star_)));
-}})()
-;
-}})()
-;
-});
-var _list_dash_append = (function(lst1,lst2){
+var list_dash_append = (function(lst1,lst2){
 return ((function() {var loop = (function(lst){
 return (function() {if(null_p_(lst)) {return lst2;
 } else {return cons(car(lst),loop(cdr(lst)));

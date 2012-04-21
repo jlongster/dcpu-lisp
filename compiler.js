@@ -729,8 +729,8 @@ var gensym = (function() {return string_dash__gt_symbol(("o" + Math["floor"]((Ma
 });
 
 
-var __compiler = require('/Users/james/projects/dcpu-lisp/outlet/backends/../compiler');
-var __generator = require('/Users/james/projects/dcpu-lisp/outlet/backends/../backends/js');
+var __compiler = require('./outlet/compiler');
+var __generator = require('./outlet/backends/js');
 var read = __compiler.read;
 var fs = require("fs");true;
 var list_dash_slice = (function(lst,start){

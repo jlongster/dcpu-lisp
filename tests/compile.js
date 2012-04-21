@@ -729,8 +729,8 @@ var gensym = (function() {return string_dash__gt_symbol(("o" + Math["floor"]((Ma
 });
 
 
-var __compiler = require('/Users/james/projects/outlet/backends/../compiler');
-var __generator = require('/Users/james/projects/outlet/backends/../backends/js');
+var __compiler = require('../outlet/compiler');
+var __generator = require('../outlet/backends/js');
 var read = __compiler.read;
 var comp = require("../compiler");var disambiguate = (function(exp){
 return comp["walk"](exp,(function(e){
