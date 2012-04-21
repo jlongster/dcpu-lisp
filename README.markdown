@@ -116,7 +116,7 @@ Here is the fib program and the resulting assembly code (without the runtime, wh
     ;; result will be in register J
     (fib 8)
 
-
+Generated assembly:
 
     JSR global_dash_entry
     SET PC, __exit
