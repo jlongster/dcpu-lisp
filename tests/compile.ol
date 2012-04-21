@@ -23,12 +23,12 @@
                      ',res)))))
 
 (assert (define a 4)
-        (global-entry
+        (entry
          (SET A 4)
          (SET PC POP)))
 
 (assert (begin (define a 4) a)
-        (global-entry
+        (entry
          (SET A 4)
          (SET J A)
          (SET PC POP)))
@@ -37,13 +37,13 @@
           (define (foo x y)
             x)
           (foo 1 2))
-        (global-entry
+        (entry
          (SET PUSH return-x)
          (SET PUSH 1)
-         (SET PC global-entry-foo)
+         (SET PC entry-foo)
          return-x
          (SET PC POP)
-         global-entry-foo
+         entry-foo
          (SET A POP)
          (SET J A)
          (SET PC POP)))
@@ -54,25 +54,25 @@
             (bar x)
             (bar y))
           (foo 4 5))
-        (global-entry
+        (entry
          (SET PUSH return-x)
          (SET PUSH 4)
          (SET PUSH 5)
-         (SET PC global-entry-foo)
+         (SET PC entry-foo)
          return-x
          (SET PC POP)
-         global-entry-bar
+         entry-bar
          (SET A POP)
          (SET J A)
          (SET PC POP)
-         global-entry-foo
+         entry-foo
          (SET B POP)
          (SET A POP)
          (SET PUSH B)
          (SET PUSH A)
          (SET PUSH return-x)
          (SET PUSH A)
-         (SET PC global-entry-bar)
+         (SET PC entry-bar)
          return-x
          (SET A POP)
          (SET B POP)
@@ -80,7 +80,7 @@
          (SET PUSH A)
          (SET PUSH return-x)
          (SET PUSH B)
-         (SET PC global-entry-bar)
+         (SET PC entry-bar)
          return-x
          (SET A POP)
          (SET B POP)
@@ -91,14 +91,14 @@
             (ADD x y)
             x)
           (add 1 2))
-        (global-entry
+        (entry
          (SET PUSH return-x)
          (SET PUSH 1)
          (SET PUSH 2)
-         (SET PC global-entry-add)
+         (SET PC entry-add)
          return-x
          (SET PC POP)
-         global-entry-add
+         entry-add
          (SET B POP)
          (SET A POP)
          (ADD A B)
@@ -108,7 +108,7 @@
 (assert (begin
           (SET J 0)
           (if J 4 5))
-        (global-entry
+        (entry
          (SET J 0)
          (IFE J 0)
          (SET PC alt-x)
@@ -123,9 +123,9 @@
           (define (result)
             0)
           (if (result) 4 5))
-        (global-entry
+        (entry
          (SET PUSH return-x)
-         (SET PC global-entry-result)
+         (SET PC entry-result)
          return-x
          (IFE J 0)
          (SET PC alt-x)
@@ -135,7 +135,7 @@
          (SET J 5)
          exit-x
          (SET PC POP)
-         global-entry-result
+         entry-result
          (SET J 0)
          (SET PC POP)))
 
@@ -149,22 +149,22 @@
               (+ x y))
             (bar 4))
           (foo 5))
-        (global-entry
+        (entry
          (SET PUSH return-x)
          (SET PUSH 5)
-         (SET PC global-entry-foo)
+         (SET PC entry-foo)
          return-x
          (SET PC POP)
-         global-entry-foo
+         entry-foo
          (SET B POP)
          (SET PUSH B)
          (SET PUSH return-x)
          (SET PUSH 4)
-         (SET PC global-entry-foo-bar)
+         (SET PC entry-foo-bar)
          return-x
          (SET B POP)
          (SET PC POP)
-         global-entry-foo-bar
+         entry-foo-bar
          (SET A POP)
          (SET J B)
          (ADD J A)
@@ -172,14 +172,14 @@
 
 (assert (begin
           (DAT 1 2 3 4 5 6 7 8 9 100))
-        (global-entry
+        (entry
           (DAT 1 2 3 4 5 6 7 8 9 100)
          (SET PC POP)))
 
 (assert (begin
           (define a 4)
           (set! a 5))
-        (global-entry
+        (entry
          (SET A 4)
          (SET A 5)
          (SET PC POP)))
@@ -188,9 +188,30 @@
           (define a 4)
           (define b 10)
           (set! b (+ a 4)))
-        (global-entry
+        (entry
          (SET A 4)
          (SET B 10)
          (SET B A)
          (ADD B 4)
+         (SET PC POP)))
+
+(assert (begin
+          (define foo (+ 1 2)))
+        (entry
+         (SET A 1)
+         (ADD A 2)
+         (SET PC POP)))
+
+(assert (begin
+          (define (bar) (+ 1 2))
+          (define buz (bar)))
+        (entry
+         (SET PUSH return-x)
+         (SET PC entry-bar)
+         return-x
+         (SET A J)
+         (SET PC POP)
+         entry-bar
+         (SET J 1)
+         (ADD J 2)
          (SET PC POP)))

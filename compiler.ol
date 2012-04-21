@@ -110,6 +110,16 @@
                                    body)
                    0)))
 
+(install-macro 'define-prim
+               (lambda (form e)
+                 (let ((name/args (cadr form))
+                       (body (cddr form)))
+                   (install-global-func (car name/args)
+                                        (cdr name/args)
+                                        '()
+                                        #f)
+                   0)))
+
 (define (make-macro pattern body)
   (let ((x (gensym))
         (e (gensym)))
@@ -287,19 +297,20 @@
             (def (dict-ref (frame-funcs frame) name)))
         (if def
             (string->symbol
-             (str (generate-global-name env)
-                  "-"
-                  name))
+             (generate-global-name env name))
             (%namespaced-function-name (cdr env) name)))))
 
-(define (generate-global-name env)
-  (if (null? env)
-      #f
-      (if (null? (cdr env))
-          (frame-enclosing-function (car env))
-          (str (generate-global-name (cdr env))
-               "-"
-               (frame-enclosing-function (car env))))))
+(define (generate-global-name env name)
+  (define names
+    (list->vector
+     (list-append
+      (if (null? env)
+          '()
+          (map str
+               (map frame-enclosing-function
+                    (cdr (reverse env)))))
+      (list (str name)))))
+  (names.join "-"))
 
 (define (save-function-def! env name def)
   (let ((frame (car env))
@@ -951,7 +962,7 @@
 
      ;; set the result (if needed)
      (if (and target (not (== target 'J)))
-         `(SET ,target J)
+         `((SET ,target J))
          '())
      
      ;; restore the env
@@ -1095,7 +1106,7 @@
                       #t
                       (cadr rest)))
         (exp (if (string? src) (read src) src))
-        (lib (read (fs.readFileSync "lib.ol" "utf-8")))
+        (lib (read (fs.readFileSync (str __dirname "/lib.ol") "utf-8")))
         (exp (if (and (list? exp)
                       (== (car exp) 'begin))
                  exp
@@ -1130,7 +1141,7 @@
        ;; expand first because it might install inline functions
        (let ((expanded (expand code)))
          (output
-          '((JSR global-entry)
+          '((JSR entry)
             (SET PC __exit))
           (if runtime? (linearized-inline-functions) '())
           (linearize
