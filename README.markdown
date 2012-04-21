@@ -1,51 +1,38 @@
-LCPU is a simple Lisp-like language that compiles to optimized DCPU-16
-assembly code. It is a very restricted subset of Lisp. There is no GC,
-and thus no data structures or run-time closures.
+LCPU is a simple Lisp-like language that compiles to optimized DCPU-16 assembly code. It is a very restricted subset of Lisp. There is no GC, and thus no data structures or run-time closures.
 
-This is intended for usage in Mojang's next game, `0x10c <http://0x10c.com/>`_.
+This is intended for usage in Mojang's next game, [0x10c](<http://0x10c.com/>).
 
 * Example program: https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.l
 * Generated assembly: https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.asm
 * Watch it run here: http://0x10co.de/imq63
 
-High-level Assembly
--------------------
+# High-level Assembly
 
-Think of it as a light wrapper around the assembly code, providing
-named variables, lexically-bound closures, and a little bit of helpful
-magic here and there.
+Think of it as a light wrapper around the assembly code, providing named variables, lexically-bound closures, and a little bit of helpful magic here and there.
 
-Create a function like so::
+Create a function like so:
 
     (define (foo x)
       (+ x 1))
 
-Variable references are statically referenced and compiled out
-straight to registers. In one function, you are not allowed more
-variable definitions than there are registers (7, and the 8th is used
-for the return value).
+Variable references are statically referenced and compiled out straight to registers. In one function, you are not allowed more variable definitions than there are registers (7, and the 8th is used for the return value).
 
-Nested functions are allowed::
+Nested functions are allowed:
 
     (define (foo x)
       (define (bar y)
         (+ x y))
       (bar 10))
 
-Run-time closures are not available because of the lack of GC, so the
-closed function cannot out-live its parent (you can't return ``bar``).
+Run-time closures are not available because of the lack of GC, so the closed function cannot out-live its parent (you can't return `bar`).
 
 Only 2 kinds of values exist: functions and 16-bit numbers.
 
-There is a lot more we could do to enrich the language but still keep
-provable semantics statically.
+There is a lot more we could do to enrich the language but still keep provable semantics statically.
 
-It is written in Outlet, a Lisp that compiled to Javascript, so the
-compiler can run in browser. See https://github.com/jlongster/outlet.
-The js is packaged with the project so you can run it with Node.
+It is written in Outlet, a Lisp that compiled to Javascript, so the compiler can run in browser. See https://github.com/jlongster/outlet. The js is packaged with the project so you can run it with Node.
 
-Features
---------
+# Features
 
 * Named functions and variables
 * Nested functions
@@ -55,8 +42,7 @@ Features
 * Small standard library
 * Probably other stuff I've forgotten about
 
-Does Not Have
--------------
+# Does Not Have
 
 * Garbage Collector
 * Heap
@@ -64,16 +50,13 @@ Does Not Have
 * Data types/structures
 * Type inference
 
-Usage
------
+# Usage
 
 Use the `lcpu` script in the `bin` directory:
 
-``./bin/lcpu program.l``
+`./bin/lcpu program.l`
 
 It will print the generated assembly to standard output.
-
-::
 
     lcpu [-p] [-c1] [-c2] [-c3] [-l] [-e] <program/expression>
 
@@ -84,18 +67,16 @@ It will print the generated assembly to standard output.
     * -l: print the code after the linearization phase
     * -e: run an expression instead of a file
 
-If you get an error, you may have to run this: ``touch compiler.ol && make``
+If you get an error, you may have to run this: `touch compiler.ol && make`
 
-Examples
---------
+# Examples
 
-You can see all the examples in the `examples <https://github.com/jlongster/dcpu-lisp/tree/master/examples>`_
+You can see all the examples in the [examples](https://github.com/jlongster/dcpu-lisp/tree/master/examples>)
 directory.
 
-Number Printing
-~~~~~~~~~~~~~~~
+## Number Printing
 
-This code defines `print-number` which prints a number to the console::
+This code defines `print-number` which prints a number to the console:
 
     (define (print color bg-color x y text)
       (MUL y 32)
@@ -122,14 +103,9 @@ This code defines `print-number` which prints a number to the console::
 
     (print-number 12345)
 
-Fib
-~~~
+## Fib
 
-Here is the fib program and the resulting assembly code (without the
-runtime, which just provides a few helpful functions). You can get the
-full assembly code in examples/fib.asm.
-
-::
+Here is the fib program and the resulting assembly code (without the runtime, which just provides a few helpful functions). You can get the full assembly code in examples/fib.asm.
 
     (define (fib a)
       (if (<= a 1)
@@ -140,7 +116,7 @@ full assembly code in examples/fib.asm.
     ;; result will be in register J
     (fib 8)
 
-::
+
 
     JSR global_dash_entry
     SET PC, __exit
@@ -193,14 +169,11 @@ full assembly code in examples/fib.asm.
     :__exit
     SET PC, __exit
 
-You can also view the tests in the `tests` directory to see how
-certain expressions are compiled.
+You can also view the tests in the `tests` directory to see how certain expressions are compiled.
 
-Inline Assembly
----------------
+# Inline Assembly
 
-If you want, you can code straight DCPU-16 assembly into your program.
-For example, here is a function that prints values to the console::
+If you want, you can code straight DCPU-16 assembly into your program. For example, here is a function that prints values to the console:
 
     (define (print color bg-color x y text)
       (MUL y 32)
@@ -212,12 +185,11 @@ For example, here is a function that prints values to the console::
       (BOR text bg-color)
       (SET [y] text))
 
-Dereferencing is supported with the normal bracket syntax (i.e. ``[y]``).
+Dereferencing is supported with the normal bracket syntax (i.e. `[y]`).
 
-Macros
-------
+# Macros
 
-``define-macro`` is provided for defining macros::
+`define-macro` is provided for defining macros:
 
     (define-macro (foo t x y)
       `(begin
@@ -226,7 +198,7 @@ Macros
 
     (foo z 1 2)
 
-is converted into::
+is converted into:
 
     (begin
       (define z (+ 1 2))
@@ -234,10 +206,9 @@ is converted into::
 
 This is a powerful construct to make sure you can generate optimized assembly code.
 
-Iteration
----------
+# Iteration
 
-The ``do`` construct provides iteration. There are two versions of ``do``::
+The `do` construct provides iteration. There are two versions of `do`:
 
     ;; Runs the expression with x starting at 0 and incrementing by 1
     ;; until it hits 32
@@ -253,14 +224,11 @@ The ``do`` construct provides iteration. There are two versions of ``do``::
         (print (/ x 2)))
 
 
-Future work
------------
+# Future work
 
 * More optimizations
 * A stepping-debugger
 
-There are many more static optimizations we could do. I'm sure there
-are bugs in this too, as it is rather untested. Please report issues
-on github if you find any, or contact me at longster@gmail.com.
+There are many more static optimizations we could do. I'm sure there are bugs in this too, as it is rather untested. Please report issues on github if you find any, or contact me at longster@gmail.com.
 
-Follow me on twitter: `@jlongster <http://twitter.com/jlongster>`_
+Follow me on twitter: [@jlongster](http://twitter.com/jlongster)
