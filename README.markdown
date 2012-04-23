@@ -39,7 +39,7 @@ It is written in Outlet, a Lisp that compiled to Javascript, so the compiler can
 * Inlinable arithmetic expressions
 * Inline assembly
 * Macros
-* Small standard library
+* Standard library for allocation, I/O, etc.
 * Probably other stuff I've forgotten about
 
 # Does Not Have
@@ -68,6 +68,21 @@ It will print the generated assembly to standard output.
     * -e: run an expression instead of a file
 
 If you get an error, you may have to run this: `touch compiler.ol && make`
+
+# Standard Library
+
+Eventually, LCPU will target a specific operating system or programming environment in the DCPU-16 machine. I'm not interested in writing and maintaining custom memory allocation, I/O, and other libraries.
+
+Unfortunately, DCPU-16 is so new we don't really have any of those yet. However! A few awesome people have started to write them, along with libraries for things like allocation and I/O.
+
+We've started bundling these basic libraries under a single project called [stdlib](https://github.com/0x10c-dev/stdlib). LCPU comes with this bundled in, so you can use it straight out of the box. The included procedures are:
+
+* ``(malloc owner length)``
+* ``(free ptr)``
+* ``(getline)``
+* ``(putc)``
+
+NOTE: I haven't added the interfaces by default yet, but view the [console example](https://github.com/jlongster/dcpu-lisp/blob/master/examples/console.l) to see how to use them.
 
 # Examples
 
@@ -224,10 +239,19 @@ The `do` construct provides iteration. There are two versions of `do`:
         (print (/ x 2)))
 
 
-# Future work
+# Future work (ABI refactoring, etc)
 
-* More optimizations
-* A stepping-debugger
+## ABI
+
+I made up my own ABI, since I haven't really written assembly before. Now that I know more about it, and the 0x10c community seems to be converging on a [standard](https://github.com/0x10cStandardsCommittee/0x10c-Standards/tree/master/ABI), I need to refactor how I store data and pass it around.
+
+Luckily, you can just write code and not worry about all of that. When it changes, you'll just have to recompile.
+
+## Debugging
+
+It's pretty painful to debug the code right now (although, its pretty painful to debug any assembly code). This could be another *huge* benefit to using LCPU: write an interpreter which runs code and lets you debug it on the fly. You could debug it easily and then compile it down when you're ready.
+
+## Optimizations
 
 There are many more static optimizations we could do. I'm sure there are bugs in this too, as it is rather untested. Please report issues on github if you find any, or contact me at longster@gmail.com.
 
