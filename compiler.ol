@@ -1136,11 +1136,11 @@
 (define (get-current-filepath)
   %current-filepath)
 
-(define (compile-file path . rest)
-  (set! %current-filepath path)
+(define (compile-file file . rest)
+  (set! %current-filepath (path.dirname file))
   (apply
    compile-program
-   (cons (fs.readFileSync path "utf-8") rest)))
+   (cons (fs.readFileSync file "utf-8") rest)))
 
 (define (compile-program src . rest)
   ;; read the source and force it into a begin expression

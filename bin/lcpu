@@ -4,7 +4,8 @@ var fs = require('fs');
 var comp = require("../compiler.js");
 var args = process.argv.slice(2);
 
-var src;
+var src = false;
+var file = false;
 var expand = false;
 var compiled1 = false;
 var compiled2 = false;
@@ -41,7 +42,7 @@ if (args[0] == '-e') {
     args = args.slice(2);
 }
 else {
-    src = fs.readFileSync(args[0], 'utf-8');
+    file = args[0];
     args = args.slice(1);
 }
 
@@ -59,6 +60,9 @@ else if(compiled3) {
 }
 else if(linearized) {
     comp["print-linearized"](src);
+}
+else if(file) {
+    comp["compile-file"](file);
 }
 else {
     comp.compile(src);

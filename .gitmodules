@@ -1,0 +1,3 @@
+[submodule "stdlib"]
+	path = stdlib
+	url = git@github.com:jlongster/stdlib.git

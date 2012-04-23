@@ -2182,10 +2182,10 @@ add_dash_to_dash_globals("\uFDD1__exit");
 var _per_current_dash_filepath = false;
 var get_dash_current_dash_filepath = (function() {return _per_current_dash_filepath;
 });
-var compile_dash_file = (function(path){
+var compile_dash_file = (function(file){
 var rest = vector_dash__gt_list(Array.prototype.slice.call(arguments, 1));
-_per_current_dash_filepath = path;
-return apply(compile_dash_program,cons(fs["readFileSync"](path,"utf-8"),rest));
+_per_current_dash_filepath = path["dirname"](file);
+return apply(compile_dash_program,cons(fs["readFileSync"](file,"utf-8"),rest));
 });
 var compile_dash_program = (function(src){
 var rest = vector_dash__gt_list(Array.prototype.slice.call(arguments, 1));
