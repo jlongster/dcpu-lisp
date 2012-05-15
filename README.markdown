@@ -6,6 +6,8 @@ This is intended for usage in Mojang's next game, [0x10c](<http://0x10c.com/>).
 * Generated assembly: https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.asm
 * Watch it run here: http://0x10co.de/imq63
 
+_I know this hasn't been updated in a while, but don't worry, I have a surprise for you guys coming soon._
+
 # High-level Assembly
 
 Think of it as a light wrapper around the assembly code, providing named variables, lexically-bound closures, and a little bit of helpful magic here and there.
