@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="dcpu-lisp : A Lisp-like language that compiles to DCPU-16 assembly code" />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>dcpu-lisp</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/jlongster/dcpu-lisp">View on GitHub</a>
+
+          <h1 id="project_title">dcpu-lisp</h1>
+          <h2 id="project_tagline">A Lisp-like language that compiles to DCPU-16 assembly code</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/jlongster/dcpu-lisp/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/jlongster/dcpu-lisp/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <p>dcpu-lisp is a simple Lisp-like language that compiles to optimized DCPU-16 assembly code. It is a very restricted subset of Lisp. There is no GC, and thus no data structures or run-time closures.</p>
+
+<p>This is intended for usage in Mojang's next game, <a href="http://0x10c.com/">0x10c</a>.</p>
+
+<ul>
+<li>Example program: <a href="https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.l">https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.l</a>
+</li>
+<li>Generated assembly: <a href="https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.asm">https://github.com/jlongster/dcpu-lisp/blob/master/examples/print-number.asm</a>
+</li>
+<li>Watch it run here: <a href="http://0x10co.de/imq63">http://0x10co.de/imq63</a>
+</li>
+</ul><h1>High-level Assembly</h1>
+
+<p>Think of it as a light wrapper around the assembly code, providing named variables, lexically-bound closures, and a little bit of helpful magic here and there.</p>
+
+<p>Create a function like so:</p>
+
+<pre><code>(define (foo x)
+  (+ x 1))
+</code></pre>
+
+<p>Variable references are statically referenced and compiled out straight to registers. In one function, you are not allowed more variable definitions than there are registers (7, and the 8th is used for the return value).</p>
+
+<p>Nested functions are allowed:</p>
+
+<pre><code>(define (foo x)
+  (define (bar y)
+    (+ x y))
+  (bar 10))
+</code></pre>
+
+<p>Run-time closures are not available because of the lack of GC, so the closed function cannot out-live its parent (you can't return <code>bar</code>).</p>
+
+<p>Only 2 kinds of values exist: functions and 16-bit numbers.</p>
+
+<p>There is a lot more we could do to enrich the language but still keep provable semantics statically.</p>
+
+<p>It is written in Outlet, a Lisp that compiled to Javascript, so the compiler can run in browser. See <a href="https://github.com/jlongster/outlet">https://github.com/jlongster/outlet</a>. The js is packaged with the project so you can run it with Node.</p>
+
+<h1>Features</h1>
+
+<ul>
+<li>Named functions and variables</li>
+<li>Nested functions</li>
+<li>Inlinable arithmetic expressions</li>
+<li>Inline assembly</li>
+<li>Macros</li>
+<li>Standard library for allocation, I/O, etc.</li>
+<li>Probably other stuff I've forgotten about</li>
+</ul><h1>Does Not Have</h1>
+
+<ul>
+<li>Garbage Collector</li>
+<li>Heap</li>
+<li>Run-time closures</li>
+<li>Data types/structures</li>
+<li>Type inference</li>
+</ul><h1>Usage</h1>
+
+<p>Use the <code>lcpu</code> script in the <code>bin</code> directory:</p>
+
+<p><code>./bin/lcpu program.l</code></p>
+
+<p>It will print the generated assembly to standard output.</p>
+
+<pre><code>lcpu [-p] [-c1] [-c2] [-c3] [-l] [-e] &lt;program/expression&gt;
+
+* -p: print the expanded program
+* -c1: print the code after the first compilation phase
+* -c2: print the code after the second compilation phase
+* -c3: print the code after the third compilation phase
+* -l: print the code after the linearization phase
+* -e: run an expression instead of a file
+</code></pre>
+
+<p>If you get an error, you may have to run this: <code>touch compiler.ol &amp;&amp; make</code></p>
+
+<h1>Standard Library</h1>
+
+<p>Eventually, dcpu-lisp will target a specific operating system or programming environment in the DCPU-16 machine. I'm not interested in writing and maintaining custom memory allocation, I/O, and other libraries.</p>
+
+<p>Unfortunately, DCPU-16 is so new we don't really have any of those yet. However! A few awesome people have started to write them, along with libraries for things like allocation and I/O.</p>
+
+<p>We've started bundling these basic libraries under a single project called <a href="https://github.com/0x10c-dev/stdlib">stdlib</a>. dcpu-lisp comes with this bundled in, so you can use it straight out of the box. The included procedures are:</p>
+
+<ul>
+<li><code>(malloc owner length)</code></li>
+<li><code>(free ptr)</code></li>
+<li><code>(getline)</code></li>
+<li><code>(putc)</code></li>
+</ul><p>NOTE: I haven't added the interfaces by default yet, but view the <a href="https://github.com/jlongster/dcpu-lisp/blob/master/examples/console.l">console example</a> to see how to use them.</p>
+
+<h1>Examples</h1>
+
+<p>You can see all the examples in the <a href="https://github.com/jlongster/dcpu-lisp/tree/master/examples">examples</a>
+directory.</p>
+
+<h2>Number Printing</h2>
+
+<p>This code defines <code>print-number</code> which prints a number to the console:</p>
+
+<pre><code>(define (print color bg-color x y text)
+  (MUL y 32)
+  (ADD y x)
+  (ADD y 0x8000)
+  (SHL color 12)
+  (SHL bg-color 8)
+  (BOR text color)
+  (BOR text bg-color)
+  (SET [y] text))
+
+(define (%print-number n i)
+  (define (p n)
+    (print 0xf 0 (- 31 i) 0 (+ 0x30 n)))
+
+  (if (&lt; n 10)
+      (p n)
+      (begin
+        (p (% n 10))
+        (%print-number (/ n 10) (+ i 1)))))
+
+(define (print-number n)
+  (%print-number n 0))
+
+(print-number 12345)
+</code></pre>
+
+<h2>Fib</h2>
+
+<p>Here is the fib program and the resulting assembly code (without the runtime, which just provides a few helpful functions). You can get the full assembly code in examples/fib.asm.</p>
+
+<pre><code>(define (fib a)
+  (if (&lt;= a 1)
+      1
+      (+ (fib (- a 1))
+         (fib (- a 2)))))
+
+;; result will be in register J
+(fib 8)
+</code></pre>
+
+<p>Generated assembly:</p>
+
+<pre><code>JSR global_dash_entry
+SET PC, __exit
+
+:global_dash_entry
+SET PUSH, return_dash_o1957346
+SET PUSH, 0x8
+SET PC, global_dash_entry_dash_fib
+:return_dash_o1957346
+SET PC, POP
+:global_dash_entry_dash_fib
+SET A, POP
+SET PUSH, A
+SET PUSH, return_dash_o3554470
+SET PUSH, A
+SET PUSH, 0x1
+SET PC, global_dash__lt__eq_
+:return_dash_o3554470
+SET A, POP
+IFE J, 0x0
+SET PC, alt_dash_o5960250
+SET J, 0x1
+SET PC, exit_dash_o9848488
+:alt_dash_o5960250
+SET PUSH, A
+SET PUSH, return_dash_o7693500
+SET PUSH, A
+SET PUSH, return_dash_o6022101
+SET J, A
+SUB J, 0x1
+SET PUSH, J
+SET PC, global_dash_entry_dash_fib
+:return_dash_o6022101
+SET A, POP
+SET PUSH, J
+SET PUSH, A
+SET PUSH, return_dash_o8008109
+SET J, A
+SUB J, 0x2
+SET PUSH, J
+SET PC, global_dash_entry_dash_fib
+:return_dash_o8008109
+SET A, POP
+SET PUSH, J
+SET PC, _plus_
+:return_dash_o7693500
+SET A, POP
+:exit_dash_o9848488
+SET PC, POP
+:__exit
+SET PC, __exit
+</code></pre>
+
+<p>You can also view the tests in the <code>tests</code> directory to see how certain expressions are compiled.</p>
+
+<h1>Inline Assembly</h1>
+
+<p>If you want, you can code straight DCPU-16 assembly into your program. For example, here is a function that prints values to the console:</p>
+
+<pre><code>(define (print color bg-color x y text)
+  (MUL y 32)
+  (ADD y x)
+  (ADD y 0x8000)
+  (SHL color 12)
+  (SHL bg-color 8)
+  (BOR text color)
+  (BOR text bg-color)
+  (SET [y] text))
+</code></pre>
+
+<p>Dereferencing is supported with the normal bracket syntax (i.e. <code>[y]</code>).</p>
+
+<h1>Macros</h1>
+
+<p><code>define-macro</code> is provided for defining macros:</p>
+
+<pre><code>(define-macro (foo t x y)
+  `(begin
+     (define ,t (+ ,x ,y))
+     (MUL ,t 50)))
+
+(foo z 1 2)
+</code></pre>
+
+<p>is converted into:</p>
+
+<pre><code>(begin
+  (define z (+ 1 2))
+  (MUL z 50))
+</code></pre>
+
+<p>This is a powerful construct to make sure you can generate optimized assembly code.</p>
+
+<h1>Iteration</h1>
+
+<p>The <code>do</code> construct provides iteration. There are two versions of <code>do</code>:</p>
+
+<pre><code>;; Runs the expression with x starting at 0 and incrementing by 1
+;; until it hits 32
+(do (x 0 32)
+    (print (* x 20)))
+
+;; Or you can provide your own start, stepping and stopping
+;; expressions.
+;; Here x starts as 0, is incremented by 5 and continues looping while
+;; x is less than 100
+(do (x 0 (+ x 5) (&lt; x 100))
+    (print x)
+    (print (/ x 2)))
+</code></pre>
+
+<h1>Future work (ABI refactoring, etc)</h1>
+
+<h2>ABI</h2>
+
+<p>I made up my own ABI, since I haven't really written assembly before. Now that I know more about it, and the 0x10c community seems to be converging on a <a href="https://github.com/0x10cStandardsCommittee/0x10c-Standards/tree/master/ABI">standard</a>, I need to refactor how I store data and pass it around.</p>
+
+<p>Luckily, you can just write code and not worry about all of that. When it changes, you'll just have to recompile.</p>
+
+<h2>Debugging</h2>
+
+<p>It's pretty painful to debug the code right now (although, its pretty painful to debug any assembly code). This could be another <em>huge</em> benefit to using dcpu-lisp: write an interpreter which runs code and lets you debug it on the fly. You could debug it easily and then compile it down when you're ready.</p>
+
+<h2>Optimizations</h2>
+
+<p>There are many more static optimizations we could do. I'm sure there are bugs in this too, as it is rather untested. Please report issues on github if you find any, or contact me at <a href="mailto:longster@gmail.com">longster@gmail.com</a>.</p>
+
+<p>Follow me on twitter: <a href="http://twitter.com/jlongster">@jlongster</a></p>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">dcpu-lisp maintained by <a href="https://github.com/jlongster">jlongster</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+              <script type="text/javascript">
+            var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+            document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+          </script>
+          <script type="text/javascript">
+            try {
+              var pageTracker = _gat._getTracker("UA-31070259-1");
+            pageTracker._trackPageview();
+            } catch(err) {}
+          </script>
+
+
+  </body>
+</html>
